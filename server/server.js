@@ -18,7 +18,7 @@ const MIME = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charse
 
 const rooms = new Map();
 function getRoom(id){
-  if(!rooms.has(id)) rooms.set(id,{ hostId:null, clients:new Map(), state:{ playing:false, time:0, updatedAt:Date.now(), videoUrl:'' }});
+  if(!rooms.has(id)) rooms.set(id,{ hostId:null, clients:new Map(), state:{ playing:false, time:0, updatedAt:Date.now(), videoUrl:'', sub:null }});
   return rooms.get(id);
 }
 function broadcast(roomId, data, except=null){
@@ -407,8 +407,14 @@ wss.on('connection',(ws,req)=>{
     }
     if(m.type==='ping'){ ws.send(JSON.stringify({type:'pong', t:m.t})); }
     if(m.type==='video-change'){
-      room.state.videoUrl=m.videoUrl; room.state.time=0; room.state.playing=false;
+      room.state.videoUrl=m.videoUrl; room.state.time=0; room.state.playing=false; room.state.sub=null;
       broadcast(roomId,{type:'video-change', videoUrl:m.videoUrl, from:ws._id}, ws);
+    }
+    if(m.type==='sub-change'){
+      room.state.sub=m.sub||null;
+      room.state.updatedAt=Date.now();
+      broadcast(roomId,{type:'sub-change', sub: m.sub, from:ws._id}, ws);
+      return;
     }
   });
   ws.on('close',()=>{

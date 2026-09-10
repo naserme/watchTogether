@@ -396,6 +396,68 @@ function setActiveSub(id){
   const ccBtn=document.getElementById('ccBtn');
   if(ccBtn) ccBtn.classList.toggle('active', subEnabled);
   if(subOff) subOff.classList.toggle('active', !subEnabled);
+  if(!suppressSubBroadcast) broadcastSubState();
+}
+let suppressSubBroadcast=false;
+function currentSubPayload(){
+  if(activeSubId===null) return {id:null, type:'off', cueDelay, cueSize};
+  if(String(activeSubId).startsWith('srv-')){
+    const ent=externalEntries.find(x=>x.id===activeSubId);
+    return {id:activeSubId, type:'server', label: ent?ent.label:activeSubId, vtt: ent?ent.vtt:null, serverIndex: parseInt(String(activeSubId).slice(4),10), cueDelay, cueSize};
+  }
+  if(String(activeSubId).startsWith('ext-')){
+    const ent=externalEntries.find(x=>x.id===activeSubId);
+    return {id:activeSubId, type:'external', label: ent?ent.label:activeSubId, vtt: ent?ent.vtt:null, cueDelay, cueSize};
+  }
+  if(String(activeSubId).startsWith('t-')){
+    const idx=parseInt(String(activeSubId).slice(2),10);
+    const tt=video.textTracks[idx];
+    return {id:activeSubId, type:'internal', label: tt? (tt.label||tt.language||activeSubId):activeSubId, cueDelay, cueSize};
+  }
+  return {id:activeSubId, type:'off', cueDelay, cueSize};
+}
+function broadcastSubState(){
+  try{ send({type:'sub-change', sub: currentSubPayload()}); }catch{}
+}
+function applyRemoteSub(sub){
+  if(!sub || sub.id===null){
+    suppressSubBroadcast=true;
+    setActiveSub(null);
+    // apply size/delay
+    if(typeof sub?.cueSize==='number'){ cueSize=sub.cueSize; subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; }
+    if(typeof sub?.cueDelay==='number'){ cueDelay=sub.cueDelay; const l=document.getElementById('subDelayLabel'); if(l) l.textContent=cueDelay.toFixed(1)+'s'; }
+    suppressSubBroadcast=false;
+    return;
+  }
+  // size/delay first
+  if(typeof sub.cueSize==='number'){ cueSize=sub.cueSize; subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; }
+  if(typeof sub.cueDelay==='number'){ cueDelay=sub.cueDelay; const l=document.getElementById('subDelayLabel'); if(l) l.textContent=cueDelay.toFixed(1)+'s'; }
+  if(sub.type==='external' || sub.type==='server'){
+    // add vtt if provided
+    if(sub.vtt){
+      let ent=externalEntries.find(x=>x.id===sub.id);
+      if(!ent) externalEntries.push({id:sub.id, label:sub.label||sub.id, vtt:sub.vtt});
+      else ent.vtt=sub.vtt;
+    }
+    suppressSubBroadcast=true;
+    setActiveSub(sub.id);
+    suppressSubBroadcast=false;
+    // if server type but no vtt yet, fetch it
+    if(sub.type==='server' && !sub.vtt && typeof sub.serverIndex==='number'){
+      const u=lastUrl||videoUrlInput.value.trim();
+      if(u) fetch('/api/video/sub?url='+encodeURIComponent(u)+'&index='+sub.serverIndex).then(r=>r.text()).then(vtt=>{
+        let ent=externalEntries.find(x=>x.id===sub.id);
+        if(ent) ent.vtt=vtt; else externalEntries.push({id:sub.id, label:sub.label, vtt});
+        if(activeSubId===sub.id) applyExternalVtt(sub.id);
+      }).catch(()=>{});
+    }
+    // re-apply with new delay
+    if(activeSubId===sub.id && sub.vtt) applyExternalVtt(sub.id);
+  } else if(sub.type==='internal'){
+    suppressSubBroadcast=true;
+    setActiveSub(sub.id);
+    suppressSubBroadcast=false;
+  }
 }
 function refreshSubUI(){
   const wrap=document.getElementById('internalSubList'); if(!wrap) return;
@@ -557,12 +619,13 @@ subFile.onchange=async()=>{
   if(subOff) subOff.classList.remove('active');
   showToast('زیرنویس خارجی اضافه شد: '+f.name);
   subFile.value='';
+  broadcastSubState();
 };
 if(subOff) subOff.onclick=()=> setActiveSub(null);
-if($('subLarger')) $('subLarger').onclick=()=>{ cueSize=Math.min(30,cueSize+2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=subStatus.textContent.replace(/\d+px/, cueSize+'px'); };
-if($('subSmaller')) $('subSmaller').onclick=()=>{ cueSize=Math.max(12,cueSize-2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=subStatus.textContent.replace(/\d+px/, cueSize+'px'); };
-if($('subDelayPlus')) $('subDelayPlus').onclick=()=>{ cueDelay+=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; if(activeSubId && String(activeSubId).startsWith('ext-')) applyExternalVtt(activeSubId); subStatus.textContent=subStatus.textContent.replace(/[\d.]+s/, cueDelay.toFixed(1)+'s'); };
-if($('subDelayMinus')) $('subDelayMinus').onclick=()=>{ cueDelay-=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; if(activeSubId && String(activeSubId).startsWith('ext-')) applyExternalVtt(activeSubId); subStatus.textContent=subStatus.textContent.replace(/[\d.]+s/, cueDelay.toFixed(1)+'s'); };
+if($('subLarger')) $('subLarger').onclick=()=>{ cueSize=Math.min(30,cueSize+2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=subStatus.textContent.replace(/\d+px/, cueSize+'px'); broadcastSubState(); };
+if($('subSmaller')) $('subSmaller').onclick=()=>{ cueSize=Math.max(12,cueSize-2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=subStatus.textContent.replace(/\d+px/, cueSize+'px'); broadcastSubState(); };
+if($('subDelayPlus')) $('subDelayPlus').onclick=()=>{ cueDelay+=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; if(activeSubId && String(activeSubId).startsWith('ext-')) applyExternalVtt(activeSubId); subStatus.textContent=subStatus.textContent.replace(/[\d.]+s/, cueDelay.toFixed(1)+'s'); if(subEnabled) broadcastSubState(); };
+if($('subDelayMinus')) $('subDelayMinus').onclick=()=>{ cueDelay-=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; if(activeSubId && String(activeSubId).startsWith('ext-')) applyExternalVtt(activeSubId); subStatus.textContent=subStatus.textContent.replace(/[\d.]+s/, cueDelay.toFixed(1)+'s'); if(subEnabled) broadcastSubState(); };
 // hook track discovery
 function hookTracks(){
   refreshSubUI(); refreshAudioUI(); refreshCcPop(); refreshAudioPop(); bindTrackPopups();
@@ -615,6 +678,7 @@ async function loadServerSub(sub){
     const ccBtn=document.getElementById('ccBtn'); if(ccBtn) ccBtn.classList.add('active');
     if(subOff) subOff.classList.remove('active');
     showToast('زیرنویس لود شد');
+    broadcastSubState();
   }catch(e){ showToast('خطا در استخراج: '+String(e).slice(0,80)); }
 }
 // patch loadVideo to also fetch server tracks
@@ -922,7 +986,7 @@ function connect(){
   ws.onerror=()=>{ connText.textContent='خطا'; };
   ws.onmessage=e=>{
     let m; try{ m=JSON.parse(e.data);}catch{return;}
-    if(m.type==='joined'){ myId=m.id; hostId=m.hostId; isHost=myId===hostId; renderRole(); if(m.state && m.state.videoUrl && !initialVideo){ videoUrlInput.value=m.state.videoUrl; loadVideo(m.state.videoUrl);} if(m.state) applySync(m.state, true); peerPill.textContent=`${m.peers} نفر`; }
+    if(m.type==='joined'){ myId=m.id; hostId=m.hostId; isHost=myId===hostId; renderRole(); if(m.state && m.state.videoUrl && !initialVideo){ videoUrlInput.value=m.state.videoUrl; loadVideo(m.state.videoUrl);} if(m.state) applySync(m.state, true); if(m.state && m.state.sub){ setTimeout(()=> applyRemoteSub(m.state.sub), 900); } peerPill.textContent=`${m.peers} نفر`; }
     if(m.type==='peer-join'){ peerPill.textContent=`${m.peers} نفر`; showToast('یک نفر وارد شد'); }
     if(m.type==='peer-leave'){ peerPill.textContent=`${m.peers} نفر`; }
     if(m.type==='host-change'){ hostId=m.hostId; isHost=myId===hostId; renderRole(); }
@@ -938,6 +1002,7 @@ function connect(){
       if(!m.playing && !video.paused){ suppress=true; video.pause(); setTimeout(()=>{suppress=false; syncPlayIcon();},350); }
     }
     if(m.type==='video-change'){ videoUrlInput.value=m.videoUrl; loadVideo(m.videoUrl); showToast('ویدیو تغییر کرد'); }
+    if(m.type==='sub-change'){ if(m.from!==myId){ applyRemoteSub(m.sub); showToast('زیرنویس به‌روزرسانی شد'); } }
   };
 }
 function renderRole(){ hostPill.textContent=isHost?'میزبان':'مهمان'; hostPill.className='pill '+(isHost?'live':''); $('syncStatus').textContent='کنترل آزاد — هر دو نفر می‌توانند پلی/پاز/Seek کنند. سینک هر ۱ ثانیه.'; }

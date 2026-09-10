@@ -47,7 +47,7 @@ export class Room {
   constructor(state, env){
     this.state=state; this.env=env;
     this.clients=new Map(); // id -> WebSocket
-    this.roomState={ playing:false, time:0, updatedAt:Date.now(), videoUrl:'' };
+    this.roomState={ playing:false, time:0, updatedAt:Date.now(), videoUrl:'', sub:null };
     this.hostId=null;
   }
   async fetch(req){
@@ -79,7 +79,8 @@ export class Room {
         this.broadcast({...m, from:id}, id);
         return;
       }
-      if(m.type==='video-change'){ this.roomState.videoUrl=m.videoUrl; this.roomState.time=0; this.roomState.playing=false; this.broadcast({type:'video-change', videoUrl:m.videoUrl, from:id}, id); }
+      if(m.type==='video-change'){ this.roomState.videoUrl=m.videoUrl; this.roomState.time=0; this.roomState.playing=false; this.roomState.sub=null; this.broadcast({type:'video-change', videoUrl:m.videoUrl, from:id}, id); }
+      if(m.type==='sub-change'){ this.roomState.sub=m.sub||null; this.roomState.updatedAt=Date.now(); this.broadcast({type:'sub-change', sub:m.sub, from:id}, id); }
       if(m.type==='ping'){ server.send(JSON.stringify({type:'pong', t:m.t})); }
     });
     server.addEventListener('close',()=>{
