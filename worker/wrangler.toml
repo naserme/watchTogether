@@ -1,9 +1,9 @@
 name = "watch-together"
-main = "worker/worker.js"
+main = "worker.js"
 compatibility_date = "2024-12-01"
 
 [assets]
-directory = "./client"
+directory = "../client"
 not_found_handling = "single-page-application"
 
 [[durable_objects.bindings]]

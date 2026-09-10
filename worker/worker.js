@@ -251,6 +251,11 @@ export default {
       return json({ok:false,error:'unknown vpn endpoint'},404);
     }
 
+    // Video tracks/subs — not available on Worker (needs ffprobe/ffmpeg on Node server)
+    if(url.pathname==='/api/video/tracks' || url.pathname==='/api/video/sub'){
+      return json({ok:false, error:'video tracks/subs require Node server with ffmpeg — not available on Cloudflare Worker. Use the Linux server (node server/server.js).'}, 501);
+    }
+
     // Health
     if(url.pathname==='/api/health') return json({ok:true, mode:'worker'});
 
