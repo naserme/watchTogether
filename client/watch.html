@@ -122,6 +122,22 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
 .vpn-status.err{display:block;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#fca5a5}
 .love-footer{text-align:center;padding:14px 16px 18px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);margin-top:8px;letter-spacing:.02em}
 .love-footer b{color:var(--accent2)}
+
+/* kmplayer-like track selectors */
+.cc-btn.active,.audio-btn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;box-shadow:0 4px 14px rgba(124,92,255,.3)}
+.track-pop{position:absolute;bottom:58px;z-index:12;background:rgba(16,16,24,.96);border:1px solid var(--border2);border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,.6);backdrop-filter:blur(12px);padding:6px;min-width:190px;max-width:260px;max-height:240px;overflow:auto;display:none;flex-direction:column;gap:4px}
+.track-pop.open{display:flex}
+.track-pop .tp-head{font-size:11px;color:var(--muted);padding:6px 8px 4px;border-bottom:1px solid var(--border);margin-bottom:2px}
+.track-opt{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;cursor:pointer;font-size:11px;transition:.15s;border:1px solid transparent;text-align:right}
+.track-opt:hover{background:rgba(255,255,255,.06);border-color:var(--border)}
+.track-opt.on{background:linear-gradient(135deg,rgba(124,92,255,.18),rgba(255,62,165,.12));border-color:rgba(124,92,255,.35);color:#fff}
+.track-opt .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.track-opt.on .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.track-badge{font-size:9px;padding:2px 6px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--border);margin-right:auto}
+.internal-card .track-row{display:flex;align-items:center;gap:8px;padding:9px 11px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:11px;font-size:11px;transition:.15s}
+.internal-card .track-row:hover{background:rgba(255,255,255,.07);border-color:var(--border2)}
+.internal-card .track-row.on{background:rgba(124,92,255,.14);border-color:rgba(124,92,255,.35)}
+
 </style>
 
 <div class="bg"><div class="grid"></div><div class="blob b1"></div><div class="blob b2"></div></div>
@@ -151,11 +167,15 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
           <div class="thumb-preview" id="thumbPreview"><canvas id="thumbCanvas" width="160" height="90"></canvas><div class="thumb-time" id="thumbTime">00:00</div></div>
         </div>
         <span class="time" id="timeLabel">00:00 / 00:00</span>
+        <button class="ctrl-btn cc-btn" id="ccBtn" title="زیرنویس (داخلی + خارجی)">💬</button>
+        <button class="ctrl-btn audio-btn" id="audioBtn" title="ترک صدا (دوبله/اصلی)">🎧</button>
         <div class="vol-wrap">
           <button class="ctrl-btn" id="muteBtn" title="صدا">🔊</button>
           <input type="range" id="vol" min="0" max="100" value="100" style="width:80px">
         </div>
         <button class="ctrl-btn" id="fsBtn" title="تمام‌صفحه">⛶</button>
+        <div class="track-pop" id="ccPop" style="left:88px"></div>
+        <div class="track-pop" id="audioPop" style="left:138px"></div>
       </div>
     </div>
     <div class="card" style="animation-delay:.08s">
@@ -176,15 +196,16 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
       <div class="hint">پراکسی با <code>Range</code> عبور می‌کند تا seek سریع بماند.</div>
     </div>
 
-    <div class="section-title"><i></i> زیرنویس — سافت‌ساب</div>
+        <div class="section-title"><i></i> زیرنویس — KMPlayer-style</div>
     <div class="card" style="animation-delay:.12s">
+      <div class="hint" style="margin-bottom:8px">اول فیلم را لود کن تا <b>زیرنویس‌های داخل خود MKV/MP4</b> شناسایی شوند — بعد از همین‌جا انتخاب کن. فایل خارجی هم اضافه می‌شود.</div>
+      <div id="internalSubList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
       <div class="file-input">
-        <label class="file-label" for="subFile">📄 انتخاب فایل SRT / VTT <span style="opacity:.6">— برای هر نفر جدا</span></label>
+        <label class="file-label" for="subFile">📄 افزودن SRT / VTT خارجی <span style="opacity:.6">— به لیست بالا اضافه می‌شود</span></label>
         <input type="file" id="subFile" accept=".srt,.vtt">
       </div>
       <div class="sub-actions">
-        <button class="btn" id="subOn">روشن</button>
-        <button class="btn active" id="subOff">خاموش</button>
+        <button class="btn active" id="subOff">✕ خاموش</button>
         <button class="btn" id="subLarger">A+ بزرگ‌تر</button>
         <button class="btn" id="subSmaller">A- کوچک‌تر</button>
       </div>
@@ -194,8 +215,13 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
         <button class="btn" id="subDelayPlus">+0.5s</button>
         <span id="subDelayLabel" style="font-size:11px;color:var(--muted);min-width:36px;text-align:center">0.0s</span>
       </div>
-      <div class="status" id="subStatus" style="margin-top:10px">زیرنویسی انتخاب نشده.</div>
+      <div class="status" id="subStatus" style="margin-top:10px">فیلم را پخش کن تا ترک‌ها شناسایی شوند.</div>
       <style id="subStyle">::cue{font-size:18px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}</style>
+    </div>
+    <div class="section-title"><i></i> صدا — دوبله / اصلی</div>
+    <div class="card internal-card" style="animation-delay:.14s">
+      <div id="internalAudioList" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div class="hint" id="audioHint" style="margin-top:8px">ترک‌های صدای داخل MKV/MP4 اینجا می‌آیند — مثلا «فارسی» و «English». اگر لیست خالی ماند، مرورگر MKV را کامل پشتیبانی نمی‌کند؛ نسخه MP4 بگیر یا روی Firefox تست کن.</div>
     </div>
 
     <div class="card" style="animation-delay:.18s;border-style:dashed;opacity:.85">
@@ -246,7 +272,7 @@ const $=s=>document.getElementById(s);
 const video=$('video'), seek=$('seek'), timeLabel=$('timeLabel'), playBtn=$('playBtn'), centerPlay=$('centerPlay'), centerPlayIcon=$('centerPlayIcon'), playerWrap=$('playerWrap');
 const roomLink=$('roomLink'), peerPill=$('peerPill'), hostPill=$('hostPill'), connText=$('connText'), syncDot=$('syncDot');
 const videoUrlInput=$('videoUrlInput'), proxyChk=$('proxyChk'), loadBtn=$('loadBtn');
-const subFile=$('subFile'), subStatus=$('subStatus'), subStyle=$('subStyle'), subOn=$('subOn'), subOff=$('subOff');
+const subFile=$('subFile'), subStatus=$('subStatus'), subStyle=$('subStyle'), subOff=$('subOff'); const subOn=document.getElementById('subOn'); // may be null after KMPlayer redesign
 const toast=$('toast'), vol=$('vol'), muteBtn=$('muteBtn');
 const vpnBtn=$('vpnBtn'), vpnModal=$('vpnModal'), vpnUrisEl=$('vpnUris'), vpnStatus=$('vpnStatus'), vpnList=$('vpnList'), vpnCount=$('vpnCount');
 const USER_ID_KEY='wt_user_id'; let myUserId=localStorage.getItem(USER_ID_KEY); if(!myUserId){ myUserId=Math.random().toString(36).slice(2,10); localStorage.setItem(USER_ID_KEY, myUserId); }
@@ -309,8 +335,10 @@ video.addEventListener('playing',hideStatus);
 video.addEventListener('loadeddata',hideStatus);
 if(initialVideo) loadVideo(initialVideo);
 
-// subs
+// === KMPlayer-like: internal + external subs & audio ===
 let trackEl=null, cueDelay=0, cueSize=18, srtBlobUrl=null, subEnabled=false, originalVtt='';
+let externalEntries=[]; // {id,label,blobUrl,vtt}
+let activeSubId=null; // null=off, 'ext-0', or track index string 't-0'
 function srtToVtt(text){
   text=text.replace(/\r/g,'').trim();
   if(text.startsWith('\uFEFF')) text=text.slice(1);
@@ -331,49 +359,187 @@ function shiftVtt(text, delay){
     return `${fmt2(a)} --> ${fmt2(b)}`;
   });
 }
-function applySub(){
-  if(!originalVtt) return;
-  const shifted = shiftVtt(originalVtt, cueDelay);
+function applyExternalVtt(id){
+  const ent=externalEntries.find(x=>x.id===id); if(!ent) return;
+  const shifted=shiftVtt(ent.vtt, cueDelay);
   if(srtBlobUrl) URL.revokeObjectURL(srtBlobUrl);
   srtBlobUrl=URL.createObjectURL(new Blob([shifted],{type:'text/vtt'}));
   if(trackEl) trackEl.remove();
   trackEl=document.createElement('track');
-  trackEl.kind='subtitles'; trackEl.label='فارسی'; trackEl.srclang='fa'; trackEl.default=true;
+  trackEl.kind='subtitles'; trackEl.label=ent.label; trackEl.srclang='fa'; trackEl.default=true;
   trackEl.src=srtBlobUrl;
   video.appendChild(trackEl);
-  const show=()=>{ const tt=video.textTracks[0]; if(tt) tt.mode= subEnabled ? 'showing' : 'hidden'; };
-  trackEl.addEventListener('load', show);
-  setTimeout(show, 300);
+  trackEl.addEventListener('load', ()=>{ for(const t of video.textTracks) t.mode='hidden'; const tt=[...video.textTracks].find(t=>t.label===ent.label); if(tt) tt.mode='showing'; });
+  setTimeout(()=>{ for(const t of video.textTracks) t.mode='hidden'; const tt=[...video.textTracks].find(t=>t.label===ent.label); if(tt) tt.mode='showing'; }, 350);
 }
-function setSubEnabled(on){
-  subEnabled=on;
-  subOn.classList.toggle('active', on);
-  subOff.classList.toggle('active', !on);
-  const tt=video.textTracks[0];
-  if(tt) tt.mode = on ? 'showing' : 'hidden';
-  subStatus.textContent = on ? `زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s` : 'زیرنویس خاموش.';
+function setActiveSub(id){
+  activeSubId=id;
+  // hide all first
+  for(const t of video.textTracks) t.mode='hidden';
+  subEnabled = id!==null;
+  if(id===null){
+    if(trackEl && trackEl.parentNode) { /* keep but hidden */ }
+    subStatus.textContent='زیرنویس خاموش.';
+  } else if(String(id).startsWith('ext-')){
+    applyExternalVtt(id);
+    const ent=externalEntries.find(x=>x.id===id);
+    subStatus.textContent=`زیرنویس: ${ent?ent.label:'خارجی'} — فعال · ${cueSize}px · ${cueDelay.toFixed(1)}s`;
+  } else if(String(id).startsWith('t-')){
+    const idx=parseInt(String(id).slice(2),10);
+    const tt=video.textTracks[idx]; if(tt) tt.mode='showing';
+    const lab=tt? (tt.label||tt.language||('ترک '+(idx+1))) : '';
+    subStatus.textContent=`زیرنویس داخلی: ${lab} — فعال · ${cueSize}px`;
+  }
+  refreshSubUI();
+  refreshCcPop();
+  // button state
+  const ccBtn=document.getElementById('ccBtn');
+  if(ccBtn) ccBtn.classList.toggle('active', subEnabled);
+  if(subOff) subOff.classList.toggle('active', !subEnabled);
 }
+function refreshSubUI(){
+  const wrap=document.getElementById('internalSubList'); if(!wrap) return;
+  wrap.innerHTML='';
+  const tracks=[...video.textTracks];
+  // Off row
+  const off=document.createElement('div');
+  off.className='track-row'+(activeSubId===null?' on':'');
+  off.style.cursor='pointer';
+  off.innerHTML=`<span class="dot"></span><span>✕ خاموش</span><span class="track-badge">Off</span>`;
+  off.onclick=()=> setActiveSub(null);
+  wrap.appendChild(off);
+  tracks.forEach((t,i)=>{
+    const id='t-'+i;
+    const isExt = trackEl && t.label===externalEntries.find(x=>x.id===activeSubId)?.label;
+    const on = activeSubId===id;
+    const lab=(t.label||t.language||'زیرنویس '+(i+1)) + (t.language? ' · '+t.language:'');
+    const kind=t.kind||'subtitles';
+    const row=document.createElement('div');
+    row.className='track-row'+(on?' on':'');
+    row.style.cursor='pointer';
+    row.innerHTML=`<span class="dot"></span><span style="flex:1">${lab}</span><span class="track-badge">${kind}</span>`;
+    row.onclick=()=> setActiveSub(id);
+    wrap.appendChild(row);
+  });
+  externalEntries.forEach(ent=>{
+    const on=activeSubId===ent.id;
+    const row=document.createElement('div');
+    row.className='track-row'+(on?' on':'');
+    row.style.cursor='pointer';
+    row.innerHTML=`<span class="dot"></span><span style="flex:1">📄 ${ent.label}</span><span class="track-badge">خارجی</span>`;
+    row.onclick=()=> setActiveSub(ent.id);
+    wrap.appendChild(row);
+  });
+  if(tracks.length===0 && externalEntries.length===0){
+    const hint=document.createElement('div');
+    hint.className='hint'; hint.style.padding='8px';
+    hint.textContent='هنوز ترکی یافت نشد — فیلم را پخش کن. اگر MKV با سافت‌ساب است و چیزی نیامد، مرورگر MKV را کامل پشتیبانی نمی‌کند (روی Firefox تست کن یا نسخه MP4 بگیر).';
+    wrap.appendChild(hint);
+  }
+}
+function refreshAudioUI(){
+  const wrap=document.getElementById('internalAudioList'); if(!wrap) return;
+  wrap.innerHTML='';
+  const alist=video.audioTracks;
+  if(!alist || alist.length===0){
+    const hint=document.createElement('div');
+    hint.className='hint'; hint.style.padding='6px';
+    hint.textContent='ترک صدای داخلی یافت نشد. این یا تک‌زبانه است یا مرورگر audioTracks را برای این فرمت نمی‌دهد (کروم MKV را گاهی نمیدهد — MP4 یا Firefox).';
+    wrap.appendChild(hint);
+    const ab=document.getElementById('audioBtn'); if(ab) ab.style.opacity='.45';
+    return;
+  }
+  const ab=document.getElementById('audioBtn'); if(ab) ab.style.opacity='1';
+  [...alist].forEach((t,i)=>{
+    const on=!!t.enabled;
+    const lab=(t.label||t.language||('صدا '+(i+1))) + (t.language? ' · '+t.language:'');
+    const row=document.createElement('div');
+    row.className='track-row'+(on?' on':'');
+    row.style.cursor='pointer';
+    row.innerHTML=`<span class="dot"></span><span style="flex:1">${lab}</span><span class="track-badge">${t.enabled?'▶ فعال':'انتخاب'}</span>`;
+    row.onclick=()=>{
+      for(const x of alist) x.enabled=false;
+      t.enabled=true;
+      refreshAudioUI(); refreshAudioPop();
+      showToast('صدا: '+lab);
+    };
+    wrap.appendChild(row);
+  });
+}
+function refreshCcPop(){
+  const pop=document.getElementById('ccPop'); if(!pop) return;
+  const tracks=[...video.textTracks];
+  let h='<div class="tp-head">زیرنویس — مثل KMPlayer</div>';
+  h+=`<div class="track-opt ${activeSubId===null?'on':''}" data-cc="off"><span class="dot"></span><span>خاموش</span><span class="track-badge">Off</span></div>`;
+  tracks.forEach((t,i)=>{
+    const id='t-'+i; const on=activeSubId===id;
+    const lab=(t.label||t.language||'زیرنویس '+(i+1));
+    h+=`<div class="track-opt ${on?'on':''}" data-cc="${id}"><span class="dot"></span><span>${lab}</span><span class="track-badge">${t.language||t.kind||''}</span></div>`;
+  });
+  externalEntries.forEach(ent=>{
+    const on=activeSubId===ent.id;
+    h+=`<div class="track-opt ${on?'on':''}" data-cc="${ent.id}"><span class="dot"></span><span>📄 ${ent.label}</span><span class="track-badge">خارجی</span></div>`;
+  });
+  if(tracks.length===0 && externalEntries.length===0) h+='<div class="hint" style="padding:8px">ترکی یافت نشد — فیلم را لود کن.</div>';
+  pop.innerHTML=h;
+  pop.querySelectorAll('[data-cc]').forEach(el=> el.onclick=()=>{ setActiveSub(el.dataset.cc==='off'?null:el.dataset.cc); pop.classList.remove('open'); });
+}
+function refreshAudioPop(){
+  const pop=document.getElementById('audioPop'); if(!pop) return;
+  const alist=video.audioTracks;
+  let h='<div class="tp-head">ترک صدا — دوبله / اصلی</div>';
+  if(!alist || alist.length===0){ h+='<div class="hint" style="padding:8px">ترک داخلی یافت نشد.</div>'; pop.innerHTML=h; return; }
+  [...alist].forEach((t,i)=>{
+    const lab=(t.label||t.language||('صدا '+(i+1)));
+    h+=`<div class="track-opt ${t.enabled?'on':''}" data-a="${i}"><span class="dot"></span><span>${lab}</span><span class="track-badge">${t.language||''}</span></div>`;
+  });
+  pop.innerHTML=h;
+  pop.querySelectorAll('[data-a]').forEach(el=> el.onclick=()=>{
+    const idx=parseInt(el.dataset.a,10);
+    for(const x of alist) x.enabled=false; alist[idx].enabled=true;
+    refreshAudioUI(); refreshAudioPop(); showToast('صدا تغییر کرد');
+    pop.classList.remove('open');
+  });
+}
+function bindTrackPopups(){
+  const ccBtn=document.getElementById('ccBtn'), audioBtn=document.getElementById('audioBtn');
+  const ccPop=document.getElementById('ccPop'), audioPop=document.getElementById('audioPop');
+  if(ccBtn) ccBtn.onclick=(e)=>{ e.stopPropagation(); audioPop?.classList.remove('open'); ccPop.classList.toggle('open'); refreshCcPop(); };
+  if(audioBtn) audioBtn.onclick=(e)=>{ e.stopPropagation(); ccPop?.classList.remove('open'); audioPop.classList.toggle('open'); refreshAudioPop(); };
+  document.addEventListener('click', ()=>{ ccPop?.classList.remove('open'); audioPop?.classList.remove('open'); });
+}
+// file add -> external list (keep previous, add new)
 subFile.onchange=async()=>{
   const f=subFile.files[0]; if(!f) return;
   let text=await f.text();
   if(f.name.endsWith('.srt')) text=srtToVtt(text);
-  originalVtt=text;
-  cueDelay=0; $('subDelayLabel').textContent='0.0s';
-  subEnabled=true;
-  applySub();
-  subStatus.textContent=`زیرنویس: ${f.name} — فعال`;
-  setSubEnabled(true);
-  showToast('زیرنویس بارگذاری شد');
+  const id='ext-'+Date.now();
+  const label=f.name.replace(/\.(srt|vtt)$/i,'');
+  externalEntries.push({id, label, vtt:text});
+  activeSubId=id;
+  applyExternalVtt(id);
+  refreshSubUI(); refreshCcPop();
+  subStatus.textContent=`زیرنویس خارجی: ${f.name} — فعال`;
+  const ccBtn=document.getElementById('ccBtn'); if(ccBtn) ccBtn.classList.add('active');
+  if(subOff) subOff.classList.remove('active');
+  showToast('زیرنویس خارجی اضافه شد: '+f.name);
+  subFile.value='';
 };
-subOn.onclick=()=>{
-  if(!originalVtt){ showToast('اول فایل SRT/VTT انتخاب کنید'); return; }
-  setSubEnabled(true);
-};
-subOff.onclick=()=> setSubEnabled(false);
-$('subLarger').onclick=()=>{ cueSize=Math.min(30,cueSize+2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=`زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s`; };
-$('subSmaller').onclick=()=>{ cueSize=Math.max(12,cueSize-2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=`زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s`; };
-$('subDelayPlus').onclick=()=>{ cueDelay+=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; applySub(); if(subEnabled) subStatus.textContent=`زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s`; };
-$('subDelayMinus').onclick=()=>{ cueDelay-=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; applySub(); if(subEnabled) subStatus.textContent=`زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s`; };
+if(subOff) subOff.onclick=()=> setActiveSub(null);
+if($('subLarger')) $('subLarger').onclick=()=>{ cueSize=Math.min(30,cueSize+2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=subStatus.textContent.replace(/\d+px/, cueSize+'px'); };
+if($('subSmaller')) $('subSmaller').onclick=()=>{ cueSize=Math.max(12,cueSize-2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=subStatus.textContent.replace(/\d+px/, cueSize+'px'); };
+if($('subDelayPlus')) $('subDelayPlus').onclick=()=>{ cueDelay+=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; if(activeSubId && String(activeSubId).startsWith('ext-')) applyExternalVtt(activeSubId); subStatus.textContent=subStatus.textContent.replace(/[\d.]+s/, cueDelay.toFixed(1)+'s'); };
+if($('subDelayMinus')) $('subDelayMinus').onclick=()=>{ cueDelay-=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; if(activeSubId && String(activeSubId).startsWith('ext-')) applyExternalVtt(activeSubId); subStatus.textContent=subStatus.textContent.replace(/[\d.]+s/, cueDelay.toFixed(1)+'s'); };
+// hook track discovery
+function hookTracks(){
+  refreshSubUI(); refreshAudioUI(); refreshCcPop(); refreshAudioPop(); bindTrackPopups();
+  // when tracks change
+  if(video.textTracks) video.textTracks.addEventListener('addtrack', ()=> { setTimeout(()=>{ refreshSubUI(); refreshCcPop(); }, 300); });
+  if(video.audioTracks) video.audioTracks.addEventListener('addtrack', ()=> { setTimeout(()=>{ refreshAudioUI(); refreshAudioPop(); }, 300); });
+  video.addEventListener('loadedmetadata', ()=> setTimeout(()=>{ refreshSubUI(); refreshAudioUI(); refreshCcPop(); refreshAudioPop(); }, 600));
+  video.addEventListener('loadeddata', ()=> setTimeout(()=>{ refreshSubUI(); refreshAudioUI(); }, 800));
+}
+hookTracks();
 
 // controls
 function syncPlayIcon(){
