@@ -86,6 +86,14 @@ worker/wrangler.toml   — Durable Object + ASSETS
 Dockerfile / package.json
 ```
 
+## توسعه آینده
+
+- [ ] **لیست افراد داخل اتاق — presence:** آواتار/نام هر peer، آنلاین/آفلاین، چه کسی paused/seeking است (WS: `peer-join`/`peer-leave` + heartbeat)
+- [ ] چت متنی سبک (WS `chat` — UI فعلاً مخفی)
+- [ ] تماس صوتی/تصویری (WebRTC — اختیاری، خاموش پیش‌فرض برای سبک ماندن)
+- [ ] استخراج لینک مستقیم یوتیوب (yt-dlp / Invidious) روی سرور
+- [ ] پشتیبانی کامل MKV demux با ffmpeg.wasm برای وقتی مرورگر audioTracks را نمی‌دهد
+
 ## نکات
 
 - زیرنویس هر نفر lokal است — به طرف مقابل ارسال نمی‌شود.
