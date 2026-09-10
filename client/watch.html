@@ -137,6 +137,19 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
 .internal-card .track-row{display:flex;align-items:center;gap:8px;padding:9px 11px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:11px;font-size:11px;transition:.15s}
 .internal-card .track-row:hover{background:rgba(255,255,255,.07);border-color:var(--border2)}
 .internal-card .track-row.on{background:rgba(124,92,255,.14);border-color:rgba(124,92,255,.35)}
+/* compact tabs — side no longer long */
+.side.compact{overflow:visible}
+.tabs{display:flex;gap:6px;padding:4px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:14px}
+.tab{flex:1;padding:9px 6px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;transition:.18s}
+.tab.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(124,92,255,.3)}
+.tab-panel{display:none}
+.tab-panel.on{display:flex;flex-direction:column;gap:12px}
+.side.compact .card{padding:14px}
+.dub-mix{display:flex;align-items:center;gap:8px;margin-top:8px}
+.dub-mix input[type=range]{flex:1;accent-color:var(--accent)}
+.proxy-shared{font-size:10px;padding:4px 8px;border-radius:999px;border:1px solid rgba(34,197,94,.3);background:rgba(34,197,94,.12);color:#86efac;display:none}
+.proxy-shared.show{display:inline-flex;align-items:center;gap:4px}
+
 
 </style>
 
@@ -158,6 +171,7 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
   <div class="player-col">
     <div class="player-wrap" id="playerWrap">
       <video id="video" playsinline preload="metadata"></video>
+      <audio id="dubAudio" preload="auto" style="display:none"></audio>
       <div class="center-play" id="centerPlay"><i id="centerPlayIcon">▶</i></div>
       <div id="videoStatus"></div>
       <div class="controls" id="controls">
@@ -184,8 +198,13 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
     </div>
   </div>
 
-  <div class="side">
-    <div class="section-title"><i></i> ویدیو</div>
+  <div class="side compact">
+    <div class="tabs" role="tablist">
+      <button class="tab on" data-tab="video">🎬 ویدیو</button>
+      <button class="tab" data-tab="sub">💬 زیرنویس</button>
+      <button class="tab" data-tab="audio">🎧 صدا/دوبله</button>
+    </div>
+    <div class="tab-panel on" data-panel="video">
     <div class="card" style="animation-delay:.06s">
       <label class="label">لینک ویدیو</label>
       <input id="videoUrlInput" class="input" placeholder="https://.../video.mp4" style="direction:ltr">
@@ -193,8 +212,26 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
         <button class="btn btn-primary" id="loadBtn" style="flex:1">بارگذاری</button>
       </div>
       <label class="switch"><input type="checkbox" id="proxyChk"> عبور از پراکسی سرور (یوتیوب / فیلتر)</label>
-      <div class="hint">پراکسی با <code>Range</code> عبور می‌کند تا seek سریع بماند.</div>
+      <span class="proxy-shared" id="proxySharedBadge">◈ پراکسی اتاق فعال</span>
+      <div class="hint">پراکسی با <code>Range</code> عبور می‌کند تا seek سریع بماند. صاحب اتاق با VPN خودش پراکسی اتاق را فعال می‌کند — بقیه بدون دیدن کانفیگ استفاده می‌کنند.</div>
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+        <label class="label">🎙 لینک صدای دوبله (اختیاری) — جدا از ویدیو</label>
+        <input id="dubUrlInput" class="input" placeholder="https://.../dubbed.mp3 یا .m4a" style="direction:ltr">
+        <div class="row">
+          <button class="btn" id="dubLoadBtn" style="flex:1">افزودن/بروزرسانی دوبله</button>
+          <button class="btn" id="dubClearBtn">حذف</button>
+        </div>
+        <div class="dub-mix" id="dubMix" style="display:none">
+          <span style="font-size:11px;color:var(--muted)">میکس</span>
+          <input type="range" id="dubMixRange" min="0" max="100" value="100">
+          <span id="dubMixLabel" style="font-size:11px;color:var(--muted);min-width:38px">100%</span>
+          <span id="dubStatus" class="hint" style="flex:1"></span>
+        </div>
+        <div class="hint" id="dubHint">لینک صدای دوبله را بده — با ویدیو سینک می‌شود (تغییر ~30ms). تغییر دوبله برای همه‌ی اتاق اعمال می‌شود تا لینک عوض نشده.</div>
+      </div>
     </div>
+    </div>
+    <div class="tab-panel" data-panel="sub">
 
         <div class="section-title"><i></i> زیرنویس — KMPlayer-style</div>
     <div class="card" style="animation-delay:.12s">
@@ -218,10 +255,14 @@ input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
       <div class="status" id="subStatus" style="margin-top:10px">فیلم را پخش کن تا ترک‌ها شناسایی شوند.</div>
       <style id="subStyle">::cue{font-size:18px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}</style>
     </div>
-    <div class="section-title"><i></i> صدا — دوبله / اصلی</div>
+    </div>
+    <div class="tab-panel" data-panel="audio">
+    <div class="section-title"><i></i> صدا — دوبله / اصلی — ترک داخلی</div>
     <div class="card internal-card" style="animation-delay:.14s">
       <div id="internalAudioList" style="display:flex;flex-direction:column;gap:6px"></div>
       <div class="hint" id="audioHint" style="margin-top:8px">ترک‌های صدای داخل MKV/MP4 اینجا می‌آیند — مثلا «فارسی» و «English». اگر لیست خالی ماند، مرورگر MKV را کامل پشتیبانی نمی‌کند؛ نسخه MP4 بگیر یا روی Firefox تست کن.</div>
+    </div>
+    </div>
     </div>
 
     <div class="card" style="animation-delay:.18s;border-style:dashed;opacity:.85">
@@ -300,15 +341,34 @@ function showStatus(html){ videoStatus.innerHTML=html; videoStatus.style.display
 function hideStatus(){ videoStatus.style.display='none'; }
 function fmt(s){ s=Math.max(0,Math.floor(s||0)); const m=String(Math.floor(s/60)).padStart(2,'0'), sc=String(s%60).padStart(2,'0'); return `${m}:${sc}`; }
 
-function loadVideo(url, forceProxy){
+async function resolveYoutubeDirect(url){
+  if(!/youtube\.com|youtu\.be/.test(url)) return null;
+  try{
+    const r=await fetch('/api/yt?url='+encodeURIComponent(url));
+    const j=await r.json();
+    if(j.ok && j.url) return j.url;
+  }catch{}
+  return null;
+}
+async function loadVideo(url, forceProxy){
   if(!url){ video.removeAttribute('src'); video.load(); return; }
   lastUrl=url;
+  // youtube: try server-side yt-dlp first
+  if(/youtube\.com|youtu\.be/.test(url)){
+    const ytDirect=await resolveYoutubeDirect(url);
+    if(ytDirect){
+      url=ytDirect; lastUrl=ytDirect;
+      // youtube direct urls often need proxy for Range/CORS — auto-enable
+      forceProxy=true;
+      showToast('یوتیوب به لینک مستقیم تبدیل شد');
+    } else if(!forceProxy && !proxyChk.checked){
+      showStatus('لینک یوتیوب: روی سرور yt-dlp نصب نیست.<br><small style="color:#f59e0b">نصب: pip install yt-dlp / یا لینک مستقیم mp4 بده — با پراکسی هم می‌توان دوباره تلاش کرد</small><br><button onclick="document.getElementById(\'proxyChk\').checked=true;document.getElementById(\'loadBtn\').click()" style="margin-top:10px;padding:6px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#fff;cursor:pointer">تلاش با پراکسی</button>');
+      return;
+    }
+  }
+  // if room has shared proxy, video will be proxied server-side even if checkbox off — keep checkbox as hint but fetch still checks shared map
   const useProxy = forceProxy || proxyChk.checked;
   const src = useProxy ? `/api/proxy?url=${encodeURIComponent(url)}&room=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(myUserId)}` : url;
-  if(/youtube\.com|youtu\.be/.test(url) && !useProxy){
-    showStatus('لینک یوتیوب: پراکسی را روشن کنید یا لینک مستقیم mp4 بدهید.<br><small style="color:#9a9ab0">یوتیوب لینک مستقیم نمی‌دهد</small>');
-    return;
-  }
   video.removeAttribute('crossorigin');
   hideStatus();
   let t=setTimeout(()=> showStatus('در حال بارگذاری…<br><small style="color:#9a9ab0">اگر طولانی شد تیک «پراکسی» را روشن کنید</small>'), 1200);
@@ -681,15 +741,141 @@ async function loadServerSub(sub){
     broadcastSubState();
   }catch(e){ showToast('خطا در استخراج: '+String(e).slice(0,80)); }
 }
-// patch loadVideo to also fetch server tracks
+// patch loadVideo to also fetch server tracks (async-aware)
 const _origLoadVideo=loadVideo;
-loadVideo=function(url, forceProxy){
-  const res=_origLoadVideo(url, forceProxy);
+loadVideo=async function(url, forceProxy){
+  const res=await _origLoadVideo(url, forceProxy);
   if(url) setTimeout(()=> fetchServerTracks(url), 800);
   return res;
 };
 
 hookTracks();
+// ── compact tabs ──
+(function(){
+  const tabs=document.querySelectorAll('.tab[data-tab]');
+  const panels=document.querySelectorAll('.tab-panel[data-panel]');
+  tabs.forEach(t=> t.addEventListener('click', ()=>{
+    tabs.forEach(x=>x.classList.remove('on'));
+    panels.forEach(p=>p.classList.remove('on'));
+    t.classList.add('on');
+    const pan=document.querySelector('.tab-panel[data-panel="'+t.dataset.tab+'"]');
+    if(pan) pan.classList.add('on');
+  }));
+})();
+// ── room shared proxy badge (poll) ──
+async function refreshProxyBadge(){
+  try{
+    const r=await fetch('/api/room/proxy?room='+encodeURIComponent(roomId)+'&userId='+encodeURIComponent(myUserId));
+    const j=await r.json();
+    const badge=document.getElementById('proxySharedBadge');
+    if(!badge) return;
+    if(j.shared){
+      badge.textContent = j.isOwner ? '◈ پراکسی اتاق فعال (شما مالک)' : '◈ پراکسی اتاق فعال — '+ (j.host||j.type||'');
+      badge.classList.add('show');
+      proxyChk.checked=true; // hint that proxy is active via room
+    } else {
+      badge.classList.remove('show');
+    }
+  }catch{}
+}
+setTimeout(refreshProxyBadge, 1200);
+setInterval(refreshProxyBadge, 8000);
+// ── dubbed audio (separate track) — synced to main video ──
+const dubAudio=document.getElementById('dubAudio');
+const dubUrlInput=document.getElementById('dubUrlInput');
+const dubMixRange=document.getElementById('dubMixRange');
+const dubMixLabel=document.getElementById('dubMixLabel');
+const dubMixWrap=document.getElementById('dubMix');
+let dubUrl=null, dubSuppress=false;
+function applyDubState(dub, fromRemote=false){
+  if(!dub || !dub.url){
+    dubUrl=null; dubMixWrap.style.display='none';
+    dubAudio.pause(); dubAudio.removeAttribute('src'); dubAudio.load();
+    if(dubUrlInput) dubUrlInput.value='';
+    document.getElementById('dubStatus').textContent='';
+    return;
+  }
+  dubUrl=dub.url;
+  if(dubUrlInput) dubUrlInput.value=dubUrl;
+  const mix = typeof dub.mix==='number' ? dub.mix : 100;
+  if(dubMixRange) dubMixRange.value=mix;
+  if(dubMixLabel) dubMixLabel.textContent=mix+'%';
+  dubMixWrap.style.display='flex';
+  const src = `/api/proxy?url=${encodeURIComponent(dubUrl)}&room=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(myUserId)}`;
+  // use proxy for dub as well if shared proxy exists — server will use roomSharedProxy
+  if(dubAudio.src !== location.origin + src && dubAudio.src !== src){
+    dubAudio.src = src;
+    dubAudio.load();
+  }
+  // volumes: main video at (100-mix)%, dub at mix%
+  const mv = (100-mix)/100, dv = mix/100;
+  // keep original video volume slider as master for both
+  // we store relative mix separately
+  dubAudio.volume = dv * (video.muted?0:video.volume||1);
+  // sync time once metadata ready
+  const syncOnce=()=>{
+    try{ dubAudio.currentTime = video.currentTime; }catch{}
+    if(!video.paused) dubAudio.play().catch(()=>{});
+  };
+  if(dubAudio.readyState>=1) syncOnce();
+  else dubAudio.addEventListener('loadedmetadata', syncOnce, {once:true});
+  document.getElementById('dubStatus').textContent = fromRemote ? 'دوبله از اتاق دریافت شد' : 'دوبله فعال';
+}
+function broadcastDub(url, mix){
+  const payload = url ? {url, mix: parseInt(mix,10)||100} : null;
+  try{ send({type:'dub-change', dub: payload}); }catch{}
+}
+// keep dub in sync with video
+video.addEventListener('play', ()=>{ if(dubUrl && dubAudio.src){ dubAudio.currentTime=video.currentTime; dubAudio.play().catch(()=>{}); } });
+video.addEventListener('pause', ()=>{ if(dubAudio) dubAudio.pause(); });
+video.addEventListener('seeking', ()=>{ if(dubUrl) try{ dubAudio.currentTime=video.currentTime; }catch{} });
+video.addEventListener('seeked', ()=>{ if(dubUrl) try{ dubAudio.currentTime=video.currentTime; }catch{} });
+video.addEventListener('timeupdate', ()=>{
+  if(!dubUrl || dubAudio.paused || video.paused) return;
+  const drift=Math.abs(dubAudio.currentTime - video.currentTime);
+  if(drift>0.35) try{ dubAudio.currentTime=video.currentTime; }catch{}
+});
+// dub volume mix
+if(dubMixRange) dubMixRange.addEventListener('input', ()=>{
+  const mix=parseInt(dubMixRange.value,10);
+  if(dubMixLabel) dubMixLabel.textContent=mix+'%';
+  if(dubUrl){
+    const mv=(100-mix)/100, dv=mix/100;
+    // fade original video vs dub
+    // we keep video.volume as master, scale dub relative
+    dubAudio.volume = dv * (video.muted?0:1);
+    // duck main video if mix high: we lower video element via gain — simplest: set video.volume proportionally
+    // but preserve user master: store master in dataset
+    if(!video.dataset.masterVol) video.dataset.masterVol = String(video.volume||1);
+    const master=parseFloat(video.dataset.masterVol)||1;
+    video.volume = master * (mix>=100? 0.06 : mix>=70? 0.3 : mix>=40? 0.65 : 1);
+    if(vol) vol.value=Math.round(video.volume*100);
+  }
+  // broadcast mix change debounced
+  clearTimeout(broadcastDub._t);
+  broadcastDub._t=setTimeout(()=> broadcastDub(dubUrl, mix), 400);
+});
+if(dubMixRange) dubMixRange.addEventListener('change', ()=> broadcastDub(dubUrl, parseInt(dubMixRange.value,10)||100));
+document.getElementById('dubLoadBtn')?.addEventListener('click', ()=>{
+  const u=dubUrlInput.value.trim();
+  if(!u){ showToast('لینک دوبله را وارد کن'); return; }
+  applyDubState({url:u, mix: parseInt(dubMixRange.value,10)||100});
+  broadcastDub(u, parseInt(dubMixRange.value,10)||100);
+  showToast('دوبله اضافه شد — برای همه اعمال شد');
+});
+document.getElementById('dubClearBtn')?.addEventListener('click', ()=>{
+  applyDubState(null);
+  broadcastDub(null);
+  showToast('دوبله حذف شد');
+});
+// mute sync
+video.addEventListener('volumechange', ()=>{
+  if(dubUrl && dubAudio){
+    const mix=parseInt(dubMixRange?.value||'100',10);
+    dubAudio.volume = (mix/100) * (video.muted?0:video.volume);
+  }
+});
+
 
 // controls
 function syncPlayIcon(){
@@ -986,7 +1172,7 @@ function connect(){
   ws.onerror=()=>{ connText.textContent='خطا'; };
   ws.onmessage=e=>{
     let m; try{ m=JSON.parse(e.data);}catch{return;}
-    if(m.type==='joined'){ myId=m.id; hostId=m.hostId; isHost=myId===hostId; renderRole(); if(m.state && m.state.videoUrl && !initialVideo){ videoUrlInput.value=m.state.videoUrl; loadVideo(m.state.videoUrl);} if(m.state) applySync(m.state, true); if(m.state && m.state.sub){ setTimeout(()=> applyRemoteSub(m.state.sub), 900); } peerPill.textContent=`${m.peers} نفر`; }
+    if(m.type==='joined'){ myId=m.id; hostId=m.hostId; isHost=myId===hostId; renderRole(); if(m.state && m.state.videoUrl && !initialVideo){ videoUrlInput.value=m.state.videoUrl; await loadVideo(m.state.videoUrl);} if(m.state) applySync(m.state, true); if(m.state && m.state.sub){ setTimeout(()=> applyRemoteSub(m.state.sub), 900); } if(m.state && m.state.dub){ setTimeout(()=> applyDubState(m.state.dub, true), 1100); } setTimeout(refreshProxyBadge, 800); peerPill.textContent=`${m.peers} نفر`; }
     if(m.type==='peer-join'){ peerPill.textContent=`${m.peers} نفر`; showToast('یک نفر وارد شد'); }
     if(m.type==='peer-leave'){ peerPill.textContent=`${m.peers} نفر`; }
     if(m.type==='host-change'){ hostId=m.hostId; isHost=myId===hostId; renderRole(); }
@@ -1001,8 +1187,9 @@ function connect(){
       if(m.playing && video.paused){ suppress=true; video.play().finally(()=>setTimeout(()=>{suppress=false; syncPlayIcon();},350)); }
       if(!m.playing && !video.paused){ suppress=true; video.pause(); setTimeout(()=>{suppress=false; syncPlayIcon();},350); }
     }
-    if(m.type==='video-change'){ videoUrlInput.value=m.videoUrl; loadVideo(m.videoUrl); showToast('ویدیو تغییر کرد'); }
+    if(m.type==='video-change'){ videoUrlInput.value=m.videoUrl; await loadVideo(m.videoUrl); showToast('ویدیو تغییر کرد'); }
     if(m.type==='sub-change'){ if(m.from!==myId){ applyRemoteSub(m.sub); showToast('زیرنویس به‌روزرسانی شد'); } }
+    if(m.type==='dub-change'){ applyDubState(m.dub, true); showToast(m.dub? 'دوبله به‌روزرسانی شد' : 'دوبله حذف شد'); }
   };
 }
 function renderRole(){ hostPill.textContent=isHost?'میزبان':'مهمان'; hostPill.className='pill '+(isHost?'live':''); $('syncStatus').textContent='کنترل آزاد — هر دو نفر می‌توانند پلی/پاز/Seek کنند. سینک هر ۱ ثانیه.'; }

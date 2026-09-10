@@ -18,7 +18,7 @@ const MIME = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charse
 
 const rooms = new Map();
 function getRoom(id){
-  if(!rooms.has(id)) rooms.set(id,{ hostId:null, clients:new Map(), state:{ playing:false, time:0, updatedAt:Date.now(), videoUrl:'', sub:null }});
+  if(!rooms.has(id)) rooms.set(id,{ hostId:null, clients:new Map(), state:{ playing:false, time:0, updatedAt:Date.now(), videoUrl:'', sub:null, dub:null }});
   return rooms.get(id);
 }
 function broadcast(roomId, data, except=null){
@@ -34,6 +34,7 @@ function parseBody(req){
 
 // ── VPN store: key = userId || roomId ──
 const vpnStore = new Map(); // key -> { configs: [{id,uri,type,label,addedAt,host}], activeId }
+const roomSharedProxy = new Map(); // roomId -> { ownerUserId, uri, type, host, updatedAt } — shared for video proxy, URI not exposed to peers
 function uriType(u){
   const t=u.trim();
   if(t.startsWith('vless://')) return 'vless';
@@ -56,14 +57,20 @@ function storeKey(userId, roomId){ return (userId||'').trim() || (roomId||'').tr
 function getStore(key){ if(!vpnStore.has(key)) vpnStore.set(key,{configs:[],activeId:null}); return vpnStore.get(key); }
 
 async function fetchViaProxy(target, headers, roomId, userId){
-  const keys=[storeKey(userId,roomId), storeKey('',roomId), '__global'];
+  // shared proxy for the room (owner's active VPN) — peers use it without seeing URI
   let cfg=null;
-  for(const k of keys){
-    const s=vpnStore.get(k);
-    if(s && s.activeId){ cfg=s.configs.find(c=>c.id===s.activeId); if(cfg) break; }
-    if(s && s.configs.length===1 && !s.activeId) { cfg=s.configs[0]; break; }
+  if(roomId && roomSharedProxy.has(roomId)){
+    const sh=roomSharedProxy.get(roomId);
+    if(sh && sh.uri) cfg={ uri: sh.uri, type: sh.type };
   }
-  // also fallback to single-uri legacy map if exists
+  if(!cfg){
+    const keys=[storeKey(userId,roomId), storeKey('',roomId), '__global'];
+    for(const k of keys){
+      const st=vpnStore.get(k);
+      if(st && st.activeId){ const f=st.configs.find(c=>c.id===st.activeId); if(f){ cfg=f; break; } }
+      if(st && st.configs.length===1 && !st.activeId) { cfg=st.configs[0]; break; }
+    }
+  }
   let dispatcher;
   if(cfg && cfg.uri){
     const u=cfg.uri.trim();
@@ -79,7 +86,6 @@ async function fetchViaProxy(target, headers, roomId, userId){
 async function pingUri(uri, timeoutMs=5000){
   const u=uri.trim();
   const type=uriType(u);
-  // http/socks can be tested directly via ProxyAgent
   if(type==='http' || type==='socks'){
     try{
       const {ProxyAgent}=await import('undici');
@@ -93,17 +99,25 @@ async function pingUri(uri, timeoutMs=5000){
       return {ok:false, error:`http ${r.status}`, ms};
     }catch(e){ return {ok:false, error: String(e.message||e).slice(0,120)}; }
   }
-  // vless/vmess/trojan/ss need xray — we do a heuristic TCP-ish check via host extraction + fetch without proxy
   const host=uriHost(u);
   if(!host) return {ok:false, error:'cannot parse host'};
   try{
     const t0=Date.now();
     const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(), timeoutMs);
-    // try HEAD to host:443
     await fetch(`https://${host}/`, {method:'HEAD', signal:ctrl.signal, headers:{'User-Agent':'Mozilla/5.0'}}).catch(()=>{});
     clearTimeout(t);
     return {ok:true, ms: Date.now()-t0, note:'xray-required — host reachable, needs TUN'};
   }catch(e){ return {ok:false, error: String(e.message||e).slice(0,120)}; }
+}
+
+// ── YouTube direct URL extraction (optional yt-dlp) ──
+async function tryYtDlp(url, timeoutMs=15000){
+  try{
+    const {stdout}=await execFileAsync('yt-dlp', ['-g','--no-playlist','-f','best[ext=mp4]/best', url], {timeout: timeoutMs, maxBuffer: 2*1024*1024});
+    const line=(stdout||'').trim().split(/\r?\n/).filter(Boolean)[0];
+    if(line && /^https?:\/\//.test(line)) return {ok:true, url: line};
+  }catch(e){ return {ok:false, error: String(e.message||e).slice(0,300)}; }
+  return {ok:false, error:'no url'};
 }
 
 // ── MKV soft-sub/audio extraction via ffprobe/ffmpeg ──
@@ -131,20 +145,42 @@ async function probeTracks(url, timeoutMs=15000){
     return {ok:false, error: msg};
   }
 }
-async function extractSubToVtt(url, subIndex, timeoutMs=120000){
+async function extractSubToVtt(url, subIndex, timeoutMs=300000){
   const vkey=url+'#'+subIndex;
   const vc=vttCache.get(vkey);
   if(vc && Date.now()-vc.at < 30*60*1000){ console.log('[sub] cache hit', vkey.slice(0,60)); return {ok:true, vtt: vc.vtt}; }
-  console.log('[sub] extract', url.slice(0,80), 'idx', subIndex);
-  // try mapping by stream index first, then by subtitle index fallback
+  console.log('[sub] extract START', url.slice(0,80), 'idx', subIndex);
   const tryArgs = [
-    ['-reconnect','1','-reconnect_at_eof','1','-reconnect_streamed','1','-reconnect_delay_max','5','-v','error','-i', url, '-map', `0:${subIndex}`, '-c:s', 'webvtt', '-f','webvtt','pipe:1'],
-    ['-reconnect','1','-reconnect_at_eof','1','-reconnect_streamed','1','-reconnect_delay_max','5','-v','error','-i', url, '-map', `0:s:0`, '-c:s', 'webvtt', '-f','webvtt','pipe:1'],
+    ['-v', 'error', '-i', url, '-map', `0:${subIndex}`, '-c:s', 'webvtt', '-f','webvtt','pipe:1'],
+    ['-v', 'error', '-i', url, '-map', `0:s:0`, '-c:s', 'webvtt', '-f','webvtt','pipe:1'],
+    ['-v', 'error', '-i', url, '-skip_initial_bytes', '1024', '-map', `0:${subIndex}`, '-c:s', 'webvtt', '-f','webvtt','pipe:1'],
   ];
-  for(const args of tryArgs){
+  for(let i=0;i<tryArgs.length;i++){
+    const args=tryArgs[i];
+    console.log('[sub] try', i+1, args.join(' ').slice(0,120));
     try{
-      const {stdout}=await execFileAsync(ffmpegBin(), args, {timeout: timeoutMs, maxBuffer: 30*1024*1024, encoding:'utf8'});
-      let vtt=stdout||'';
+      const { spawn } = await import('child_process');
+      const ffmpeg = spawn(ffmpegBin(), args);
+      const chunks = [];
+      for await (const chunk of ffmpeg.stdout) chunks.push(chunk);
+      const stdout = Buffer.concat(chunks);
+      // wait with timeout
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          ffmpeg.kill('SIGKILL');
+          reject(new Error('timeout'));
+        }, timeoutMs);
+        ffmpeg.on('close', (code) => {
+          clearTimeout(timer);
+          if (code === 0) resolve();
+          else reject(new Error(`ffmpeg exited with code ${code}`));
+        });
+        ffmpeg.on('error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+      let vtt = stdout.toString('utf8');
       vtt=vtt.trimStart();
       if(!vtt) continue;
       if(!vtt.startsWith('WEBVTT')) vtt='WEBVTT\n\n'+vtt;
@@ -153,11 +189,10 @@ async function extractSubToVtt(url, subIndex, timeoutMs=120000){
       return {ok:true, vtt};
     }catch(e){
       const msg=String(e.message||e);
-      const stderr=String(e.stderr||'').slice(0,800);
-      // if 404 or not found, don't retry other maps
-      if(/404|Not Found|Server returned 404/i.test(stderr+msg)) return {ok:false, error: msg.slice(0,600), stderr};
-      // else try next mapping
-      if(args===tryArgs[tryArgs.length-1]) return {ok:false, error: msg.slice(0,800), stderr};
+      const stderr=String(e.stderr||'');
+      console.log('[sub] try', i+1, 'FAIL', 'msg:', msg.slice(0,300), 'stderr:', stderr.slice(0,500));
+      if(/404|Not Found|Server returned 404/i.test(stderr+msg)) return {ok:false, error: msg.slice(0,600), stderr: stderr.slice(0,800)};
+      if(i===tryArgs.length-1) return {ok:false, error: msg.slice(0,800), stderr: stderr.slice(0,800)};
     }
   }
   return {ok:false, error:'no subtitle extracted'};
@@ -170,6 +205,7 @@ const server = http.createServer(async (req,res)=>{
   if(req.method==='OPTIONS'){ res.writeHead(204); return res.end(); }
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  // Health
   if(url.pathname==='/api/health'){ res.writeHead(200,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:true, rooms:rooms.size})); }
 
   // ── VPN APIs ──
@@ -180,9 +216,7 @@ const server = http.createServer(async (req,res)=>{
       const userId=(body?.userId||url.searchParams.get('userId')||'').trim();
       const roomId=(body?.roomId||body?.room||url.searchParams.get('room')||'').trim();
       const raw=(body?.urisText||body?.uris||body?.uri||'').toString();
-      // split by newline / comma
       const lines=raw.split(/[\r\n,]+/).map(s=>s.trim()).filter(Boolean);
-      // also handle body.uris as array
       if(Array.isArray(body?.uris)) lines.push(...body.uris.map(s=>String(s).trim()).filter(Boolean));
       const unique=[...new Set(lines)];
       if(!unique.length){ res.writeHead(400,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'no uris'})); }
@@ -204,11 +238,9 @@ const server = http.createServer(async (req,res)=>{
       const userId=(body?.userId||url.searchParams.get('userId')||'').trim();
       const roomId=(body?.roomId||body?.room||url.searchParams.get('room')||'').trim();
       let uri=(body?.uri||body?.urisText||'').toString().trim();
-      // if body contains uris array/text with multiple lines, delegate to import
       if(!uri && body?.uris){ uri=''; }
       const lines=uri.split(/[\r\n]+/).map(s=>s.trim()).filter(Boolean);
       if(lines.length>1){
-        // treat as batch
         const key=storeKey(userId,roomId);
         const store=getStore(key);
         let added=0;
@@ -258,7 +290,14 @@ const server = http.createServer(async (req,res)=>{
       if(!s){ res.writeHead(404,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'no store'})); }
       if(!s.configs.some(c=>c.id===id)){ res.writeHead(400,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'id not found'})); }
       s.activeId=id;
-      res.writeHead(200,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:true, activeId:id}));
+      // share active proxy for the whole room so peers' /api/proxy works via owner's VPN without seeing URI
+      try{
+        const active=s.configs.find(c=>c.id===id);
+        if(active && roomId){
+          roomSharedProxy.set(roomId, { ownerUserId: userId, uri: active.uri, type: active.type, host: active.host, updatedAt: Date.now() });
+        }
+      }catch{}
+      res.writeHead(200,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:true, activeId:id, shared: !!roomId}));
     }
     if(url.pathname==='/api/vpn/remove' && req.method==='POST'){
       const body=await parseBody(req);
@@ -290,7 +329,6 @@ const server = http.createServer(async (req,res)=>{
     if(url.pathname==='/api/vpn/ping-all' && req.method==='POST'){
       const body=await parseBody(req);
       const userId=(body?.userId||'').trim(); const roomId=(body?.roomId||'').trim();
-      // accept explicit configs from client (fixes id-mismatch when only localStorage has data)
       let targets=[];
       if(Array.isArray(body?.configs) && body.configs.length){
         targets = body.configs.map(x=> ({id:String(x.id), uri:String(x.uri||''), type: uriType(String(x.uri||'')), host: uriHost(String(x.uri||''))})).filter(x=>x.uri);
@@ -313,11 +351,37 @@ const server = http.createServer(async (req,res)=>{
     res.writeHead(404,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'unknown vpn endpoint'}));
   }
 
+  // Room shared proxy info (no URI leak to non-owner) — OUTSIDE vpn block
+  if(url.pathname==='/api/room/proxy' && req.method==='GET'){
+    const roomId=(url.searchParams.get('room')||url.searchParams.get('roomId')||'').trim();
+    const userId=(url.searchParams.get('userId')||'').trim();
+    const sh=roomSharedProxy.get(roomId);
+    if(!sh){ res.writeHead(200,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:true, shared:false})); }
+    const isOwner = !!userId && sh.ownerUserId===userId;
+    res.writeHead(200,{'Content-Type':'application/json'});
+    return res.end(JSON.stringify({ok:true, shared:true, isOwner, host: sh.host||'', type: sh.type||'', owner: sh.ownerUserId.slice(0,4)+'***'}));
+  }
+  if(url.pathname==='/api/room/proxy' && req.method==='DELETE'){
+    const body=await parseBody(req);
+    const roomId=(body?.roomId||body?.room||'').trim(); const userId=(body?.userId||'').trim();
+    const sh=roomSharedProxy.get(roomId);
+    if(sh && sh.ownerUserId===userId) roomSharedProxy.delete(roomId);
+    res.writeHead(200,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:true}));
+  }
+
+  // YouTube: try to resolve to direct mp4 via yt-dlp (if installed on server)
+  if(url.pathname==='/api/yt'){
+    const target=url.searchParams.get('url'); if(!target){ res.writeHead(400,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'missing url'})); }
+    if(!/youtube\.com|youtu\.be/.test(target)){ res.writeHead(400,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'not a youtube url'})); }
+    const r=await tryYtDlp(target, 20000);
+    res.writeHead(r.ok?200:502,{'Content-Type':'application/json'});
+    return res.end(JSON.stringify(r));
+  }
+
   // Video tracks (ffprobe) — internal MKV subs/audio
   if(url.pathname==='/api/video/tracks'){
     const target=url.searchParams.get('url');
     if(!target){ res.writeHead(400,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'missing url'})); }
-    // optional: require url to be proxied? just probe directly
     console.log('[tracks] probe', target.slice(0,80)); const data=await probeTracks(target, 20000);
     res.writeHead(data.ok?200:502,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});
     return res.end(JSON.stringify(data));
@@ -364,7 +428,7 @@ const server = http.createServer(async (req,res)=>{
   if(url.pathname==='/watch.html') fp=path.join(CLIENT_DIR,'watch.html');
   if(!fp.startsWith(CLIENT_DIR)){ res.writeHead(403); return res.end('forbidden'); }
   if(fs.existsSync(fp) && fs.statSync(fp).isDirectory()) fp=path.join(fp,'index.html');
-  if(!fs.existsSync(fp)){ res.writeHead(404,{'Content-Type':'text/html'}); return res.end('<h1>404</h1><a href=\"/\">Home</a>'); }
+  if(!fs.existsSync(fp)){ res.writeHead(404,{'Content-Type':'text/html'}); return res.end('<h1>404</h1><a href="/">Home</a>'); }
   const ext=path.extname(fp);
   res.writeHead(200,{'Content-Type': MIME[ext]||'application/octet-stream','Cache-Control':'no-cache'});
   fs.createReadStream(fp).pipe(res);
@@ -407,13 +471,19 @@ wss.on('connection',(ws,req)=>{
     }
     if(m.type==='ping'){ ws.send(JSON.stringify({type:'pong', t:m.t})); }
     if(m.type==='video-change'){
-      room.state.videoUrl=m.videoUrl; room.state.time=0; room.state.playing=false; room.state.sub=null;
+      room.state.videoUrl=m.videoUrl; room.state.time=0; room.state.playing=false; room.state.sub=null; room.state.dub=null;
       broadcast(roomId,{type:'video-change', videoUrl:m.videoUrl, from:ws._id}, ws);
     }
     if(m.type==='sub-change'){
       room.state.sub=m.sub||null;
       room.state.updatedAt=Date.now();
       broadcast(roomId,{type:'sub-change', sub: m.sub, from:ws._id}, ws);
+      return;
+    }
+    if(m.type==='dub-change'){
+      room.state.dub=m.dub||null;
+      room.state.updatedAt=Date.now();
+      broadcast(roomId,{type:'dub-change', dub: m.dub, from:ws._id}, ws);
       return;
     }
   });

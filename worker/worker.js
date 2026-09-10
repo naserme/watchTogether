@@ -47,7 +47,7 @@ export class Room {
   constructor(state, env){
     this.state=state; this.env=env;
     this.clients=new Map(); // id -> WebSocket
-    this.roomState={ playing:false, time:0, updatedAt:Date.now(), videoUrl:'', sub:null };
+    this.roomState={ playing:false, time:0, updatedAt:Date.now(), videoUrl:'', sub:null, dub:null };
     this.hostId=null;
   }
   async fetch(req){
