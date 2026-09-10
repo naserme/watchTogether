@@ -400,6 +400,9 @@ function setActiveSub(id){
 function refreshSubUI(){
   const wrap=document.getElementById('internalSubList'); if(!wrap) return;
   wrap.innerHTML='';
+  if(serverTracksLoading){
+    const ld=document.createElement('div'); ld.className='hint'; ld.style.padding='8px'; ld.textContent='⏳ در حال شناسایی ترک‌های داخل MKV…'; wrap.appendChild(ld); return;
+  }
   const tracks=[...video.textTracks];
   // Off row
   const off=document.createElement('div');
@@ -430,6 +433,18 @@ function refreshSubUI(){
     row.onclick=()=> setActiveSub(ent.id);
     wrap.appendChild(row);
   });
+  serverSubs.forEach(s=>{
+    const sid='srv-'+s.index;
+    const already=externalEntries.some(x=>x.id===sid);
+    const on=activeSubId===sid;
+    const row=document.createElement('div');
+    row.className='track-row'+(on?' on':'');
+    row.style.cursor='pointer';
+    row.style.borderStyle= already? 'solid':'dashed';
+    row.innerHTML=`<span class="dot"></span><span style="flex:1">⭐ ${s.label}</span><span class="track-badge">${already?'آماده':'سرور'}</span>`;
+    row.onclick=()=> loadServerSub(s);
+    wrap.appendChild(row);
+  });
   if(tracks.length===0 && externalEntries.length===0){
     const hint=document.createElement('div');
     hint.className='hint'; hint.style.padding='8px';
@@ -441,13 +456,26 @@ function refreshAudioUI(){
   const wrap=document.getElementById('internalAudioList'); if(!wrap) return;
   wrap.innerHTML='';
   const alist=video.audioTracks;
+  // show server audios even if browser hides them
+  if(serverAudios.length){
+    const head=document.createElement('div'); head.className='hint'; head.style.padding='4px 6px'; head.textContent=`سرور ${serverAudios.length} ترک صدا شناسایی کرد:`; wrap.appendChild(head);
+    serverAudios.forEach(a=>{
+      const row=document.createElement('div'); row.className='track-row'; row.style.cursor='default'; row.style.opacity='.85';
+      row.innerHTML=`<span class="dot" style="background:#f59e0b"></span><span style="flex:1">⭐ ${a.label}</span><span class="track-badge">سرور</span>`;
+      wrap.appendChild(row);
+    });
+    const note=document.createElement('div'); note.className='hint'; note.style.padding='4px 6px'; note.textContent='تعویض صدای MKV در مرورگر فقط اگر audioTracks بدهد کار می‌کند — اگر نمی‌دهد نسخه MP4 بگیر.'; wrap.appendChild(note);
+  }
   if(!alist || alist.length===0){
-    const hint=document.createElement('div');
-    hint.className='hint'; hint.style.padding='6px';
-    hint.textContent='ترک صدای داخلی یافت نشد. این یا تک‌زبانه است یا مرورگر audioTracks را برای این فرمت نمی‌دهد (کروم MKV را گاهی نمیدهد — MP4 یا Firefox).';
-    wrap.appendChild(hint);
+    if(serverAudios.length===0){
+      const hint=document.createElement('div');
+      hint.className='hint'; hint.style.padding='6px';
+      hint.textContent='ترک صدای داخلی یافت نشد. این یا تک‌زبانه است یا مرورگر audioTracks را برای این فرمت نمی‌دهد (کروم MKV را گاهی نمیدهد — MP4 یا Firefox).';
+      wrap.appendChild(hint);
+    }
     const ab=document.getElementById('audioBtn'); if(ab) ab.style.opacity='.45';
-    return;
+    if(!serverAudios.length) return;
+    else { /* still show browser list if any, but already shown server */ if(!alist || alist.length===0) return; }
   }
   const ab=document.getElementById('audioBtn'); if(ab) ab.style.opacity='1';
   [...alist].forEach((t,i)=>{
@@ -480,9 +508,14 @@ function refreshCcPop(){
     const on=activeSubId===ent.id;
     h+=`<div class="track-opt ${on?'on':''}" data-cc="${ent.id}"><span class="dot"></span><span>📄 ${ent.label}</span><span class="track-badge">خارجی</span></div>`;
   });
+  serverSubs.forEach(s=>{
+    const sid='srv-'+s.index; const on=activeSubId===sid;
+    h+=`<div class="track-opt ${on?'on':''}" data-cc-srv="${s.index}"><span class="dot"></span><span>⭐ ${s.label}</span><span class="track-badge">سرور</span></div>`;
+  });
   if(tracks.length===0 && externalEntries.length===0) h+='<div class="hint" style="padding:8px">ترکی یافت نشد — فیلم را لود کن.</div>';
   pop.innerHTML=h;
   pop.querySelectorAll('[data-cc]').forEach(el=> el.onclick=()=>{ setActiveSub(el.dataset.cc==='off'?null:el.dataset.cc); pop.classList.remove('open'); });
+  pop.querySelectorAll('[data-cc-srv]').forEach(el=> { el.onclick=async()=>{ pop.classList.remove('open'); const idx=parseInt(el.dataset.ccSrv,10); const s=serverSubs.find(x=>x.index===idx); if(s) await loadServerSub(s); }; });
 }
 function refreshAudioPop(){
   const pop=document.getElementById('audioPop'); if(!pop) return;
@@ -539,6 +572,59 @@ function hookTracks(){
   video.addEventListener('loadedmetadata', ()=> setTimeout(()=>{ refreshSubUI(); refreshAudioUI(); refreshCcPop(); refreshAudioPop(); }, 600));
   video.addEventListener('loadeddata', ()=> setTimeout(()=>{ refreshSubUI(); refreshAudioUI(); }, 800));
 }
+// ── Server-side MKV track extraction (ffprobe/ffmpeg) ──
+let serverSubs=[], serverAudios=[], serverTracksLoading=false;
+async function fetchServerTracks(videoUrl){
+  if(!videoUrl) return;
+  serverTracksLoading=true;
+  refreshSubUI(); // show loading
+  try{
+    const r=await fetch('/api/video/tracks?url='+encodeURIComponent(videoUrl));
+    const j=await r.json();
+    if(j.ok){
+      serverSubs=(j.subs||[]).map(s=>({index:s.index, label: (s.title||'') + (s.language? ' · '+s.language:'') + ' · '+s.codec_name + ' (#'+s.index+')', lang:s.language||'', title:s.title||'', codec:s.codec_name}));
+      serverAudios=(j.audios||[]).map(a=>({index:a.index, label: (a.title||'') + (a.language? ' · '+a.language:'') + ' · '+a.codec_name + (a.channels? ' '+a.channels+'ch':'') + ' (#'+a.index+')', lang:a.language||''}));
+      // show hint
+      if(serverSubs.length) subStatus.textContent=`${serverSubs.length} زیرنویس داخلی یافت شد — از لیست انتخاب کن.`;
+      if(serverAudios.length) { const ah=document.getElementById('audioHint'); if(ah) ah.textContent=`${serverAudios.length} ترک صدا یافت شد.`; }
+    } else {
+      serverSubs=[]; serverAudios=[];
+      subStatus.textContent='سافت‌ساب داخل فایل پیدا نشد یا ffprobe خطا داد.';
+    }
+  }catch(e){ serverSubs=[]; serverAudios=[]; }
+  serverTracksLoading=false;
+  refreshSubUI(); refreshAudioUI(); refreshCcPop(); refreshAudioPop();
+}
+async function loadServerSub(sub){
+  const u=lastUrl||videoUrlInput.value.trim(); if(!u) return;
+  try{
+    showToast('در حال استخراج زیرنویس…');
+    // server expects stream index (e.g. 2) — we store original index
+    const r=await fetch('/api/video/sub?url='+encodeURIComponent(u)+'&index='+encodeURIComponent(sub.index));
+    if(!r.ok){ const j=await r.json().catch(()=>null); throw new Error(j? (j.error||'failed') : 'failed '+r.status); }
+    const vtt=await r.text();
+    const id='srv-'+sub.index;
+    // add or replace
+    let ent=externalEntries.find(x=>x.id===id);
+    if(ent){ ent.vtt=vtt; }
+    else { externalEntries.push({id, label: '⭐ '+sub.label, vtt}); }
+    activeSubId=id;
+    applyExternalVtt(id);
+    refreshSubUI(); refreshCcPop();
+    subStatus.textContent=`زیرنویس داخلی: ${sub.label} — فعال`;
+    const ccBtn=document.getElementById('ccBtn'); if(ccBtn) ccBtn.classList.add('active');
+    if(subOff) subOff.classList.remove('active');
+    showToast('زیرنویس لود شد');
+  }catch(e){ showToast('خطا در استخراج: '+String(e).slice(0,80)); }
+}
+// patch loadVideo to also fetch server tracks
+const _origLoadVideo=loadVideo;
+loadVideo=function(url, forceProxy){
+  const res=_origLoadVideo(url, forceProxy);
+  if(url) setTimeout(()=> fetchServerTracks(url), 800);
+  return res;
+};
+
 hookTracks();
 
 // controls

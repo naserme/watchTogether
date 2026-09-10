@@ -3,7 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { WebSocketServer } from 'ws';
+const execFileAsync = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -101,6 +104,63 @@ async function pingUri(uri, timeoutMs=5000){
     clearTimeout(t);
     return {ok:true, ms: Date.now()-t0, note:'xray-required — host reachable, needs TUN'};
   }catch(e){ return {ok:false, error: String(e.message||e).slice(0,120)}; }
+}
+
+// ── MKV soft-sub/audio extraction via ffprobe/ffmpeg ──
+const tracksCache = new Map(); // url -> {at, data}
+const vttCache = new Map(); // url#idx -> {at, vtt}
+function ffprobeBin(){ return process.env.FFPROBE || 'ffprobe'; }
+function ffmpegBin(){ return process.env.FFMPEG || 'ffmpeg'; }
+async function probeTracks(url, timeoutMs=15000){
+  const key=url;
+  const cached=tracksCache.get(key);
+  if(cached && Date.now()-cached.at < 10*60*1000) return cached.data;
+  const args=['-v','quiet','-print_format','json','-show_streams','-show_format', url];
+  try{
+    const {stdout}=await execFileAsync(ffprobeBin(), args, {timeout: timeoutMs, maxBuffer: 4*1024*1024});
+    const j=JSON.parse(stdout);
+    const streams=j.streams||[];
+    const subs=streams.filter(x=>x.codec_type==='subtitle').map(x=>({index:x.index, codec_name:x.codec_name, language:(x.tags&&x.tags.language)||'', title:(x.tags&&x.tags.title)||'', disposition:x.disposition||{}}));
+    const audios=streams.filter(x=>x.codec_type==='audio').map(x=>({index:x.index, codec_name:x.codec_name, language:(x.tags&&x.tags.language)||'', title:(x.tags&&x.tags.title)||'', channels:x.channels||0, disposition:x.disposition||{}}));
+    const videos=streams.filter(x=>x.codec_type==='video').map(x=>({index:x.index, codec_name:x.codec_name, width:x.width, height:x.height}));
+    const data={ok:true, videos, audios, subs, format:j.format||null};
+    tracksCache.set(key,{at:Date.now(), data});
+    return data;
+  }catch(e){
+    const msg=String(e.message||e).slice(0,400);
+    return {ok:false, error: msg};
+  }
+}
+async function extractSubToVtt(url, subIndex, timeoutMs=120000){
+  const vkey=url+'#'+subIndex;
+  const vc=vttCache.get(vkey);
+  if(vc && Date.now()-vc.at < 30*60*1000){ console.log('[sub] cache hit', vkey.slice(0,60)); return {ok:true, vtt: vc.vtt}; }
+  console.log('[sub] extract', url.slice(0,80), 'idx', subIndex);
+  // try mapping by stream index first, then by subtitle index fallback
+  const tryArgs = [
+    ['-reconnect','1','-reconnect_at_eof','1','-reconnect_streamed','1','-reconnect_delay_max','5','-v','error','-i', url, '-map', `0:${subIndex}`, '-c:s', 'webvtt', '-f','webvtt','pipe:1'],
+    ['-reconnect','1','-reconnect_at_eof','1','-reconnect_streamed','1','-reconnect_delay_max','5','-v','error','-i', url, '-map', `0:s:0`, '-c:s', 'webvtt', '-f','webvtt','pipe:1'],
+  ];
+  for(const args of tryArgs){
+    try{
+      const {stdout}=await execFileAsync(ffmpegBin(), args, {timeout: timeoutMs, maxBuffer: 30*1024*1024, encoding:'utf8'});
+      let vtt=stdout||'';
+      vtt=vtt.trimStart();
+      if(!vtt) continue;
+      if(!vtt.startsWith('WEBVTT')) vtt='WEBVTT\n\n'+vtt;
+      vttCache.set(vkey,{at:Date.now(), vtt});
+      console.log('[sub] cached', vkey.slice(0,60), 'len', vtt.length);
+      return {ok:true, vtt};
+    }catch(e){
+      const msg=String(e.message||e);
+      const stderr=String(e.stderr||'').slice(0,800);
+      // if 404 or not found, don't retry other maps
+      if(/404|Not Found|Server returned 404/i.test(stderr+msg)) return {ok:false, error: msg.slice(0,600), stderr};
+      // else try next mapping
+      if(args===tryArgs[tryArgs.length-1]) return {ok:false, error: msg.slice(0,800), stderr};
+    }
+  }
+  return {ok:false, error:'no subtitle extracted'};
 }
 
 const server = http.createServer(async (req,res)=>{
@@ -251,6 +311,27 @@ const server = http.createServer(async (req,res)=>{
     }
     // fallback for /api/vpn* unknown
     res.writeHead(404,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'unknown vpn endpoint'}));
+  }
+
+  // Video tracks (ffprobe) — internal MKV subs/audio
+  if(url.pathname==='/api/video/tracks'){
+    const target=url.searchParams.get('url');
+    if(!target){ res.writeHead(400,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'missing url'})); }
+    // optional: require url to be proxied? just probe directly
+    console.log('[tracks] probe', target.slice(0,80)); const data=await probeTracks(target, 20000);
+    res.writeHead(data.ok?200:502,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});
+    return res.end(JSON.stringify(data));
+  }
+  if(url.pathname==='/api/video/sub'){
+    const target=url.searchParams.get('url');
+    const idx=url.searchParams.get('index');
+    if(!target || idx===null){ res.writeHead(400,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'missing url or index'})); }
+    const subIndex=parseInt(idx,10);
+    if(Number.isNaN(subIndex)){ res.writeHead(400,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:false,error:'invalid index'})); }
+    const r=await extractSubToVtt(target, subIndex, 110000);
+    if(!r.ok){ res.writeHead(502,{'Content-Type':'application/json'}); return res.end(JSON.stringify(r)); }
+    res.writeHead(200,{'Content-Type':'text/vtt; charset=utf-8','Access-Control-Allow-Origin':'*','Cache-Control':'no-cache'});
+    return res.end(r.vtt);
   }
 
   // Proxy — optionally via selected VPN
