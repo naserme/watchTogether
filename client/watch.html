@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تماشا — WatchTogether</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#06060b;--card:#11111b;--card2:#181825;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);--accent:#7c5cff;--accent2:#ff3ea5;--accent3:#3b82f6;--text:#f5f5ff;--muted:#9aa0b8;--ok:#22c55e;--warn:#f59e0b}
+body{font-family:'Vazirmatn',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+/* bg */
+.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:var(--bg)}
+.blob{position:absolute;border-radius:50%;filter:blur(70px);opacity:.45;mix-blend-mode:screen}
+.b1{width:700px;height:700px;background:radial-gradient(circle at 30% 30%, #7c5cff 0%, transparent 70%);top:-180px;right:-120px;animation:float1 14s ease-in-out infinite}
+.b2{width:600px;height:600px;background:radial-gradient(circle at 50% 50%, #ff3ea5 0%, transparent 70%);top:80px;left:-140px;animation:float2 16s ease-in-out infinite}
+@keyframes float1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-30px,30px) scale(1.06)}}
+@keyframes float2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(40px,-20px) scale(1.08)}}
+.grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);background-size:40px 40px;mask-image:radial-gradient(ellipse at 50% 0%, black 55%, transparent 80%)}
+
+/* topbar */
+.topbar{height:58px;display:flex;align-items:center;gap:12px;padding:0 16px;background:rgba(17,17,27,.72);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20}
+.logo{font-weight:800;font-size:16px;white-space:nowrap;display:flex;align-items:center;gap:10px}
+.logo-mark{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:14px;box-shadow:0 6px 18px rgba(124,92,255,.35)}
+.logo span{opacity:.9}
+.room{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+.room input{flex:1;min-width:0;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:9px 12px;font-size:11px;direction:ltr;text-align:left;transition:.2s}
+.room input:focus{outline:none;border-color:rgba(124,92,255,.4);box-shadow:0 0 0 3px rgba(124,92,255,.12)}
+.pill{font-size:11px;padding:7px 11px;border-radius:999px;border:1px solid var(--border);color:var(--muted);white-space:nowrap;background:rgba(255,255,255,.04);backdrop-filter:blur(8px);display:flex;align-items:center;gap:6px}
+.pill.live{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;box-shadow:0 4px 16px rgba(124,92,255,.3)}
+.btn{border:1px solid var(--border);background:rgba(255,255,255,.06);color:var(--text);border-radius:12px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:600;transition:.2s}
+.btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.1)}
+.btn:active{transform:translateY(0)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(124,92,255,.35)}
+.btn-primary:hover{box-shadow:0 10px 28px rgba(124,92,255,.45)}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;transition:.3s}
+.sync-dot.on{background:var(--ok);box-shadow:0 0 12px var(--ok);animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.6}}
+
+/* stage */
+.stage{flex:1;display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px;min-height:0;max-width:1440px;width:100%;margin:0 auto}
+@media(max-width:980px){.stage{grid-template-columns:1fr;padding:12px}.side{order:2}}
+.player-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.player-wrap{position:relative;background:#000;border-radius:22px;overflow:hidden;border:1px solid var(--border);box-shadow:0 20px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04) inset;animation:reveal .6s ease}
+@keyframes reveal{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.player-wrap::before{content:'';position:absolute;inset:0;border-radius:22px;padding:1px;background:linear-gradient(135deg, rgba(124,92,255,.35), transparent 45%, rgba(255,62,165,.2));-webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;z-index:2}
+video{width:100%;aspect-ratio:16/9;max-height:62vh;background:#000;display:block;cursor:pointer}
+@media(max-width:980px){video{max-height:56vh}}
+.center-play{position:absolute;inset:0;display:grid;place-items:center;z-index:3;pointer-events:none;transition:.3s}
+.center-play i{width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.92);color:#000;display:grid;place-items:center;font-size:26px;box-shadow:0 12px 36px rgba(0,0,0,.5);transform:scale(.9);transition:.3s}
+.player-wrap:hover .center-play i{transform:scale(1)}
+.center-play.hidden{opacity:0;transform:scale(1.05)}
+#videoStatus{position:absolute;inset:0;display:none;place-items:center;background:rgba(0,0,0,.68);backdrop-filter:blur(4px);color:#fff;font-size:13px;text-align:center;padding:24px;line-height:1.9;z-index:4}
+.controls{position:absolute;bottom:0;left:0;right:0;z-index:5;display:flex;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(0deg, rgba(0,0,0,.85) 0%, rgba(0,0,0,.45) 60%, transparent 100%);backdrop-filter:blur(6px);transform:translateY(0);transition:.3s;direction:ltr}
+.player-wrap.idle .controls{transform:translateY(100%);opacity:0}
+.ctrl-btn{width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;display:grid;place-items:center;font-size:16px;backdrop-filter:blur(8px);transition:.2s;flex-shrink:0}
+.ctrl-btn:hover{background:rgba(255,255,255,.14);transform:scale(1.05)}
+.ctrl-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;box-shadow:0 6px 18px rgba(124,92,255,.35)}
+.range-wrap{flex:1;display:flex;align-items:center;gap:10px;min-width:0;position:relative}
+.thumb-preview{position:absolute;bottom:34px;transform:translateX(-50%);background:#0c0c12;border:1px solid rgba(255,255,255,.14);border-radius:12px;overflow:hidden;box-shadow:0 16px 40px rgba(0,0,0,.7);display:none;z-index:10;pointer-events:none;min-width:160px}
+.thumb-preview.show{display:block}
+.thumb-preview canvas{display:block;width:160px;height:90px;background:#000;object-fit:cover}
+.thumb-preview .thumb-time{font-size:10px;color:#fff;text-align:center;padding:4px 6px;background:rgba(0,0,0,.75);direction:ltr;font-variant-numeric:tabular-nums}
+.thumb-preview::after{content:'';position:absolute;bottom:-6px;left:50%;width:10px;height:10px;background:#0c0c12;border-right:1px solid rgba(255,255,255,.14);border-bottom:1px solid rgba(255,255,255,.14);transform:translateX(-50%) rotate(45deg)}
+input[type=range].range{flex:1;appearance:none;height:4px;background:rgba(255,255,255,.18);border-radius:999px;cursor:pointer;accent-color:var(--accent)}
+input[type=range].range::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:.2s}
+input[type=range].range:hover::-webkit-slider-thumb{transform:scale(1.2)}
+.time{font-size:11px;color:rgba(255,255,255,.85);direction:ltr;white-space:nowrap;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.08);padding:5px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.08)}
+.vol-wrap{display:flex;align-items:center;gap:6px}
+.vol-wrap input{width:80px;accent-color:var(--accent)}
+@media(max-width:600px){.vol-wrap{display:none}}
+
+/* side */
+.side{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto;scrollbar-width:thin}
+.side::-webkit-scrollbar{width:4px}
+.side::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:999px}
+.section-title{font-size:11px;letter-spacing:.08em;color:var(--muted);display:flex;align-items:center;gap:8px;padding:0 2px}
+.section-title i{width:22px;height:1px;background:linear-gradient(90deg,var(--accent),transparent);display:inline-block}
+.card{background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));border:1px solid var(--border);border-radius:20px;padding:16px;backdrop-filter:blur(14px);position:relative;overflow:hidden;transition:.25s;animation:reveal .6s ease both}
+.card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,.3)}
+.card::before{content:'';position:absolute;top:0;right:0;width:140px;height:140px;background:radial-gradient(circle, rgba(124,92,255,.10), transparent 70%);pointer-events:none}
+.label{font-size:11px;color:var(--muted);margin-bottom:7px;display:block}
+.input{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:11px 12px;font-size:12px;transition:.2s}
+.input:focus{outline:none;border-color:rgba(124,92,255,.4);box-shadow:0 0 0 3px rgba(124,92,255,.12)}
+.row{display:flex;gap:8px;margin-top:10px}
+.hint{font-size:11px;color:var(--muted);line-height:1.8}
+.status{font-size:11px;color:var(--muted);line-height:1.7}
+.kbd{font-size:10px;border:1px solid var(--border);padding:2px 6px;border-radius:6px;background:rgba(255,255,255,.06)}
+.switch{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-top:10px}
+.switch input{accent-color:var(--accent)}
+/* sub */
+.sub-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.sub-actions .btn{font-size:11px;padding:7px 10px;border-radius:10px}
+.sub-actions .btn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(124,92,255,.3)}
+.file-input{position:relative;overflow:hidden}
+.file-input input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.file-label{display:flex;align-items:center;gap:8px;justify-content:center;padding:12px;border:1px dashed rgba(255,255,255,.18);border-radius:12px;background:rgba(255,255,255,.03);font-size:12px;color:var(--muted);transition:.2s;cursor:pointer}
+.file-label:hover{background:rgba(255,255,255,.06);border-color:rgba(124,92,255,.35);color:var(--text)}
+.delay-row{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.delay-row .btn{padding:6px 10px;font-size:11px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:rgba(20,20,28,.9);border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:999px;font-size:12px;backdrop-filter:blur(12px);opacity:0;pointer-events:none;transition:.3s;z-index:50}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* vpn modal */
+.vpn-btn{border-color:rgba(124,92,255,.35) !important;background:rgba(124,92,255,.12) !important}
+.vpn-btn.has-config{border-color:rgba(34,197,94,.4) !important;background:rgba(34,197,94,.14) !important;color:#86efac !important}
+.modal-overlay{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);display:none;place-items:center;padding:20px;animation:fadeIn .25s ease}
+.modal-overlay.open{display:grid}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{width:min(520px, 100%);background:linear-gradient(180deg, rgba(26,26,40,.95), rgba(14,14,22,.98));border:1px solid var(--border2);border-radius:22px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.06) inset;animation:modalIn .32s cubic-bezier(.16,1,.3,1)}
+@keyframes modalIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+.modal-head{padding:18px 18px 0;display:flex;align-items:center;justify-content:space-between}
+.modal-head h3{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px}
+.modal-head h3 i{width:30px;height:30px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:14px}
+.modal-x{width:30px;height:30px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.06);color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.modal-body{padding:16px 18px 18px}
+.modal-textarea{width:100%;min-height:96px;background:rgba(0,0,0,.45);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:11px 12px;font-size:11px;direction:ltr;text-align:left;resize:vertical;font-family:ui-monospace,monospace;transition:.2s}
+.modal-textarea:focus{outline:none;border-color:rgba(124,92,255,.4);box-shadow:0 0 0 3px rgba(124,92,255,.12)}
+.vpn-hint{font-size:11px;color:var(--muted);line-height:1.8;margin-top:8px}
+.vpn-status{margin-top:10px;padding:10px 12px;border-radius:12px;font-size:11px;line-height:1.7;display:none}
+.vpn-status.ok{display:block;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.22);color:#86efac}
+.vpn-status.warn{display:block;background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.24);color:#fcd34d}
+.vpn-status.err{display:block;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#fca5a5}
+.love-footer{text-align:center;padding:14px 16px 18px;font-size:11px;color:var(--muted);border-top:1px solid var(--border);margin-top:8px;letter-spacing:.02em}
+.love-footer b{color:var(--accent2)}
+</style>
+
+<div class="bg"><div class="grid"></div><div class="blob b1"></div><div class="blob b2"></div></div>
+
+<div class="topbar">
+  <a href="/" class="logo"><div class="logo-mark">▶</div> Watch<span>Together</span></a>
+  <div class="room">
+    <input id="roomLink" readonly>
+    <button class="btn btn-primary" id="copyBtn">کپی لینک دعوت</button>
+    <button class="btn vpn-btn" id="vpnBtn" title="کانفیگ VPN برای پراکسی ویدیو">◈ VPN</button>
+  </div>
+  <span class="pill" id="peerPill">۱ نفر</span>
+  <span class="pill" id="hostPill">میزبان</span>
+  <span class="pill" id="connPill"><span class="sync-dot" id="syncDot"></span><span id="connText">در حال اتصال…</span></span>
+</div>
+
+<div class="stage">
+  <div class="player-col">
+    <div class="player-wrap" id="playerWrap">
+      <video id="video" playsinline preload="metadata"></video>
+      <div class="center-play" id="centerPlay"><i id="centerPlayIcon">▶</i></div>
+      <div id="videoStatus"></div>
+      <div class="controls" id="controls">
+        <button class="ctrl-btn primary" id="playBtn" title="پخش/توقف (Space)">▶</button>
+        <div class="range-wrap" id="rangeWrap">
+          <input type="range" id="seek" class="range" min="0" max="100" value="0">
+          <div class="thumb-preview" id="thumbPreview"><canvas id="thumbCanvas" width="160" height="90"></canvas><div class="thumb-time" id="thumbTime">00:00</div></div>
+        </div>
+        <span class="time" id="timeLabel">00:00 / 00:00</span>
+        <div class="vol-wrap">
+          <button class="ctrl-btn" id="muteBtn" title="صدا">🔊</button>
+          <input type="range" id="vol" min="0" max="100" value="100" style="width:80px">
+        </div>
+        <button class="ctrl-btn" id="fsBtn" title="تمام‌صفحه">⛶</button>
+      </div>
+    </div>
+    <div class="card" style="animation-delay:.08s">
+      <div class="status" id="syncStatus">کنترل آزاد — هر دو نفر می‌توانند پلی/پاز/Seek کنند. سینک هر ۱ ثانیه.</div>
+      <div class="status" style="margin-top:6px">میانبر: <span class="kbd">Space</span> پخش/توقف · <span class="kbd">←/→</span> ۵ ثانیه · کلیک روی ویدیو</div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="section-title"><i></i> ویدیو</div>
+    <div class="card" style="animation-delay:.06s">
+      <label class="label">لینک ویدیو</label>
+      <input id="videoUrlInput" class="input" placeholder="https://.../video.mp4" style="direction:ltr">
+      <div class="row">
+        <button class="btn btn-primary" id="loadBtn" style="flex:1">بارگذاری</button>
+      </div>
+      <label class="switch"><input type="checkbox" id="proxyChk"> عبور از پراکسی سرور (یوتیوب / فیلتر)</label>
+      <div class="hint">پراکسی با <code>Range</code> عبور می‌کند تا seek سریع بماند.</div>
+    </div>
+
+    <div class="section-title"><i></i> زیرنویس — سافت‌ساب</div>
+    <div class="card" style="animation-delay:.12s">
+      <div class="file-input">
+        <label class="file-label" for="subFile">📄 انتخاب فایل SRT / VTT <span style="opacity:.6">— برای هر نفر جدا</span></label>
+        <input type="file" id="subFile" accept=".srt,.vtt">
+      </div>
+      <div class="sub-actions">
+        <button class="btn" id="subOn">روشن</button>
+        <button class="btn active" id="subOff">خاموش</button>
+        <button class="btn" id="subLarger">A+ بزرگ‌تر</button>
+        <button class="btn" id="subSmaller">A- کوچک‌تر</button>
+      </div>
+      <div class="delay-row">
+        <span class="label" style="margin:0">تاخیر</span>
+        <button class="btn" id="subDelayMinus">−0.5s</button>
+        <button class="btn" id="subDelayPlus">+0.5s</button>
+        <span id="subDelayLabel" style="font-size:11px;color:var(--muted);min-width:36px;text-align:center">0.0s</span>
+      </div>
+      <div class="status" id="subStatus" style="margin-top:10px">زیرنویسی انتخاب نشده.</div>
+      <style id="subStyle">::cue{font-size:18px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}</style>
+    </div>
+
+    <div class="card" style="animation-delay:.18s;border-style:dashed;opacity:.85">
+      <div class="label">چت/صدا (آینده)</div>
+      <div class="hint">پیام‌های <code>chat</code> از WS عبور می‌کنند — UI فعلاً مخفی تا خلوت بماند.</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- VPN modal — bulk import + list + ping -->
+<div class="modal-overlay" id="vpnModal">
+  <div class="modal" role="dialog" aria-modal="true" style="max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-head">
+      <h3><i>◈</i> کانفیگ‌های VPN</h3>
+      <button class="modal-x" id="vpnClose" aria-label="بستن">✕</button>
+    </div>
+    <div class="modal-body" style="overflow:auto;flex:1">
+      <label class="label">افزودن کانفیگ — هر خط یک کانفیگ (vless / vmess / trojan / ss / http / socks5)</label>
+      <textarea id="vpnUris" class="modal-textarea" placeholder="vless://...&#10;vless://...&#10;vmess://...&#10;یا لیست کامل را پیست کن" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn btn-primary" id="vpnImport" style="flex:1">➕ ایمپورت به لیست</button>
+        <button class="btn" id="vpnCancel">انصراف</button>
+      </div>
+      <div id="vpnStatus" class="vpn-status"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:16px">
+        <span class="label" style="margin:0;flex:1">لیست ذخیره‌شده (<span id="vpnCount">0</span>) — انتخاب دستی یا خودکار</span>
+        <button class="btn" id="vpnPingAll" style="padding:6px 10px;font-size:11px">📡 پینگ همه</button>
+        <button class="btn" id="vpnAuto" style="padding:6px 10px;font-size:11px">⚡ بهترین خودکار</button>
+      </div>
+      <div id="vpnList" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn" id="vpnClearAll" style="font-size:11px;padding:7px 10px;color:#f87171;border-color:rgba(248,113,113,.3)">🗑 حذف همه</button>
+        <span class="hint" style="flex:1">کانفیگ‌ها برای همین اتاق و همین مرورگر (localStorage) ذخیره می‌شن. پراکسی ویدیو از کانفیگ فعال استفاده می‌کنه.</span>
+      </div>
+      <div class="vpn-hint" style="margin-top:8px">
+        <b>http/socks5</b> مستقیم با پراکسی کار می‌کنه. <b>vless/vmess/trojan/ss</b> روی این سرور نیاز به Xray TUN داره — اگر نداره فقط پینگ host گرفته می‌شه.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="love-footer">ساخته شده با عشق برای <b>نهال قشنگم</b> ♥ — © 2026 WatchTogether</div>
+
+<script>
+const $=s=>document.getElementById(s);
+const video=$('video'), seek=$('seek'), timeLabel=$('timeLabel'), playBtn=$('playBtn'), centerPlay=$('centerPlay'), centerPlayIcon=$('centerPlayIcon'), playerWrap=$('playerWrap');
+const roomLink=$('roomLink'), peerPill=$('peerPill'), hostPill=$('hostPill'), connText=$('connText'), syncDot=$('syncDot');
+const videoUrlInput=$('videoUrlInput'), proxyChk=$('proxyChk'), loadBtn=$('loadBtn');
+const subFile=$('subFile'), subStatus=$('subStatus'), subStyle=$('subStyle'), subOn=$('subOn'), subOff=$('subOff');
+const toast=$('toast'), vol=$('vol'), muteBtn=$('muteBtn');
+const vpnBtn=$('vpnBtn'), vpnModal=$('vpnModal'), vpnUrisEl=$('vpnUris'), vpnStatus=$('vpnStatus'), vpnList=$('vpnList'), vpnCount=$('vpnCount');
+const USER_ID_KEY='wt_user_id'; let myUserId=localStorage.getItem(USER_ID_KEY); if(!myUserId){ myUserId=Math.random().toString(36).slice(2,10); localStorage.setItem(USER_ID_KEY, myUserId); }
+
+// room + params
+const pathParts=location.pathname.split('/').filter(Boolean);
+let roomId = pathParts[1] || 'demo';
+if(!pathParts[1]) history.replaceState(null,'',`/watch/${roomId}${location.search}`);
+const qs=new URLSearchParams(location.search);
+let initialVideo = qs.get('video')||'';
+let initialProxy = qs.get('proxy')==='1';
+let myName = qs.get('name')||'مهمان';
+let myId=null, hostId=null, isHost=false, suppress=false, ws=null, syncTimer=null;
+
+videoUrlInput.value=initialVideo;
+proxyChk.checked=initialProxy;
+roomLink.value = location.origin + `/watch/${roomId}`;
+
+const videoStatus=$('videoStatus');
+let lastUrl='';
+
+function showToast(t){ toast.textContent=t; toast.classList.add('show'); clearTimeout(showToast._t); showToast._t=setTimeout(()=>toast.classList.remove('show'),1800); }
+function proxied(url){ if(!url) return ''; const base = `/api/proxy?url=${encodeURIComponent(url)}&room=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(myUserId)}`; if(!proxyChk.checked) return url; return base; }
+function showStatus(html){ videoStatus.innerHTML=html; videoStatus.style.display='grid'; }
+function hideStatus(){ videoStatus.style.display='none'; }
+function fmt(s){ s=Math.max(0,Math.floor(s||0)); const m=String(Math.floor(s/60)).padStart(2,'0'), sc=String(s%60).padStart(2,'0'); return `${m}:${sc}`; }
+
+function loadVideo(url, forceProxy){
+  if(!url){ video.removeAttribute('src'); video.load(); return; }
+  lastUrl=url;
+  const useProxy = forceProxy || proxyChk.checked;
+  const src = useProxy ? `/api/proxy?url=${encodeURIComponent(url)}&room=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(myUserId)}` : url;
+  if(/youtube\.com|youtu\.be/.test(url) && !useProxy){
+    showStatus('لینک یوتیوب: پراکسی را روشن کنید یا لینک مستقیم mp4 بدهید.<br><small style="color:#9a9ab0">یوتیوب لینک مستقیم نمی‌دهد</small>');
+    return;
+  }
+  video.removeAttribute('crossorigin');
+  hideStatus();
+  let t=setTimeout(()=> showStatus('در حال بارگذاری…<br><small style="color:#9a9ab0">اگر طولانی شد تیک «پراکسی» را روشن کنید</small>'), 1200);
+  const onLoaded=()=>{ clearTimeout(t); hideStatus(); video.removeEventListener('loadedmetadata',onLoaded); video.removeEventListener('canplay',onLoaded); };
+  video.addEventListener('loadedmetadata',onLoaded);
+  video.addEventListener('canplay',onLoaded);
+  video.src = src;
+  video.load();
+}
+video.addEventListener('error',()=>{
+  const err=video.error; const code=err?err.code:'';
+  const alreadyProxy = video.src.includes('/api/proxy');
+  if(!alreadyProxy && lastUrl){
+    showStatus(`بارگذاری مستقیم ناموفق (کد ${code}) — تلاش از طریق پراکسی…`);
+    proxyChk.checked=true;
+    setTimeout(()=> loadVideo(lastUrl, true), 400);
+    return;
+  }
+  showStatus(`خطا در پخش (کد ${code})<br><small style="color:#f59e0b">${err?err.message:''}</small><br><button onclick="document.getElementById('video').load();document.getElementById('video').play()" style="margin-top:10px;padding:6px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#fff;cursor:pointer">تلاش مجدد</button>`);
+});
+video.addEventListener('stalled',()=> showStatus('اتصال کند — در حال بافر…'));
+video.addEventListener('waiting',()=>{ if(video.readyState<3) showStatus('بافر…'); });
+video.addEventListener('playing',hideStatus);
+video.addEventListener('loadeddata',hideStatus);
+if(initialVideo) loadVideo(initialVideo);
+
+// subs
+let trackEl=null, cueDelay=0, cueSize=18, srtBlobUrl=null, subEnabled=false, originalVtt='';
+function srtToVtt(text){
+  text=text.replace(/\r/g,'').trim();
+  if(text.startsWith('\uFEFF')) text=text.slice(1);
+  if(!text.startsWith('WEBVTT')) text='WEBVTT\n\n'+text;
+  text=text.replace(/(\d+):(\d+):(\d+),(\d+)/g,'$1:$2:$3.$4');
+  return text;
+}
+function shiftVtt(text, delay){
+  if(!delay) return text;
+  return text.replace(/(\d{2}):(\d{2}):(\d{2})\.(\d{3}) --> (\d{2}):(\d{2}):(\d{2})\.(\d{3})/g, (m,h1,m1,s1,ms1,h2,m2,s2,ms2)=>{
+    const toSec=(h,m,s,ms)=> parseInt(h)*3600+parseInt(m)*60+parseInt(s)+parseInt(ms)/1000;
+    const fmt2=(sec)=>{
+      sec=Math.max(0,sec);
+      const h=Math.floor(sec/3600), mm=Math.floor((sec%3600)/60), s=Math.floor(sec%60), ms=Math.round((sec%1)*1000);
+      return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+    };
+    const a=toSec(h1,m1,s1,ms1)+delay, b=toSec(h2,m2,s2,ms2)+delay;
+    return `${fmt2(a)} --> ${fmt2(b)}`;
+  });
+}
+function applySub(){
+  if(!originalVtt) return;
+  const shifted = shiftVtt(originalVtt, cueDelay);
+  if(srtBlobUrl) URL.revokeObjectURL(srtBlobUrl);
+  srtBlobUrl=URL.createObjectURL(new Blob([shifted],{type:'text/vtt'}));
+  if(trackEl) trackEl.remove();
+  trackEl=document.createElement('track');
+  trackEl.kind='subtitles'; trackEl.label='فارسی'; trackEl.srclang='fa'; trackEl.default=true;
+  trackEl.src=srtBlobUrl;
+  video.appendChild(trackEl);
+  const show=()=>{ const tt=video.textTracks[0]; if(tt) tt.mode= subEnabled ? 'showing' : 'hidden'; };
+  trackEl.addEventListener('load', show);
+  setTimeout(show, 300);
+}
+function setSubEnabled(on){
+  subEnabled=on;
+  subOn.classList.toggle('active', on);
+  subOff.classList.toggle('active', !on);
+  const tt=video.textTracks[0];
+  if(tt) tt.mode = on ? 'showing' : 'hidden';
+  subStatus.textContent = on ? `زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s` : 'زیرنویس خاموش.';
+}
+subFile.onchange=async()=>{
+  const f=subFile.files[0]; if(!f) return;
+  let text=await f.text();
+  if(f.name.endsWith('.srt')) text=srtToVtt(text);
+  originalVtt=text;
+  cueDelay=0; $('subDelayLabel').textContent='0.0s';
+  subEnabled=true;
+  applySub();
+  subStatus.textContent=`زیرنویس: ${f.name} — فعال`;
+  setSubEnabled(true);
+  showToast('زیرنویس بارگذاری شد');
+};
+subOn.onclick=()=>{
+  if(!originalVtt){ showToast('اول فایل SRT/VTT انتخاب کنید'); return; }
+  setSubEnabled(true);
+};
+subOff.onclick=()=> setSubEnabled(false);
+$('subLarger').onclick=()=>{ cueSize=Math.min(30,cueSize+2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=`زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s`; };
+$('subSmaller').onclick=()=>{ cueSize=Math.max(12,cueSize-2); subStyle.textContent=`::cue{font-size:${cueSize}px;background:rgba(0,0,0,.62);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}`; if(subEnabled) subStatus.textContent=`زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s`; };
+$('subDelayPlus').onclick=()=>{ cueDelay+=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; applySub(); if(subEnabled) subStatus.textContent=`زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s`; };
+$('subDelayMinus').onclick=()=>{ cueDelay-=0.5; $('subDelayLabel').textContent=cueDelay.toFixed(1)+'s'; applySub(); if(subEnabled) subStatus.textContent=`زیرنویس فعال — ${cueSize}px · تاخیر ${cueDelay.toFixed(1)}s`; };
+
+// controls
+function syncPlayIcon(){
+  const paused=video.paused;
+  playBtn.textContent= paused ? '▶' : '⏸';
+  centerPlayIcon.textContent= paused ? '▶' : '⏸';
+  centerPlay.classList.toggle('hidden', !paused);
+  if(!paused) setTimeout(()=> centerPlay.classList.add('hidden'), 700);
+}
+playBtn.onclick=()=>{ ensureSound(); video.paused? video.play(): video.pause(); };
+$('fsBtn').onclick=()=> { if(document.fullscreenElement) document.exitFullscreen(); else playerWrap.requestFullscreen?.(); };
+video.addEventListener('click',()=>{ ensureSound(); video.paused? video.play(): video.pause(); });
+video.addEventListener('play', ()=>{ syncPlayIcon(); if(!suppress) send({type:'play', time:video.currentTime}); });
+video.addEventListener('pause',()=>{ syncPlayIcon(); if(!suppress) send({type:'pause', time:video.currentTime}); });
+let seeking=false;
+video.addEventListener('seeking',()=>{ seeking=true; });
+video.addEventListener('seeked',()=>{ seeking=false; if(!suppress) send({type:'seek', time:video.currentTime}); });
+video.addEventListener('timeupdate',()=>{
+  if(!seeking && video.duration && !isNaN(video.duration)){ seek.value=(video.currentTime/video.duration*100)||0; timeLabel.textContent=`${fmt(video.currentTime)} / ${fmt(video.duration)}`; }
+});
+video.addEventListener('loadedmetadata', syncPlayIcon);
+let seekCommitTimer=null;
+seek.addEventListener('input',()=>{
+  if(!video.duration || isNaN(video.duration)) return;
+  seeking=true;
+  const t=seek.value/100*video.duration;
+  timeLabel.textContent=`${fmt(t)} / ${fmt(video.duration)}`;
+  clearTimeout(seekCommitTimer);
+  seekCommitTimer=setTimeout(()=>{ seeking=false; video.currentTime=t; }, 120);
+});
+seek.addEventListener('change',()=>{
+  if(!video.duration || isNaN(video.duration)) return;
+  clearTimeout(seekCommitTimer);
+  const t=seek.value/100*video.duration;
+  seeking=false;
+  video.currentTime=t;
+});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space' && document.activeElement.tagName!=='INPUT'){ e.preventDefault(); playBtn.click(); }
+  if(e.code==='ArrowRight' && e.target===document.body) { e.preventDefault(); if(video.duration) video.currentTime+=5; }
+  if(e.code==='ArrowLeft' && e.target===document.body) { e.preventDefault(); if(video.duration) video.currentTime-=5; }
+});
+// volume
+vol.addEventListener('input',()=>{ video.muted=false; video.volume=vol.value/100; muteBtn.textContent= video.volume==0 ? '🔇' : video.volume<0.5 ? '🔉' : '🔊'; });
+muteBtn.onclick=()=>{ video.muted=!video.muted; muteBtn.textContent= video.muted ? '🔇' : (video.volume<0.5 ? '🔉' : '🔊'); };
+video.addEventListener('volumechange',()=>{ if(!video.muted) vol.value=Math.round(video.volume*100); muteBtn.textContent= video.muted ? '🔇' : (video.volume==0 ? '🔇' : video.volume<0.5 ? '🔉' : '🔊'); });
+// init unmuted with sound + fix autoplay-muted trap
+video.muted=false; video.volume=1; vol.value=100; muteBtn.textContent='🔊';
+function ensureSound(){ if(video.muted){ video.muted=false; } if(video.volume===0){ video.volume=1; vol.value=100; } muteBtn.textContent='🔊'; }
+['click','keydown','touchstart'].forEach(ev=> document.addEventListener(ev, ensureSound, {once:true}));
+// thumbnail on timeline hover — offscreen video
+let thumbVideo=null, thumbReady=false, thumbPendingTime=null;
+function ensureThumbVideo(){
+  if(thumbVideo) return thumbVideo;
+  thumbVideo=document.createElement('video');
+  thumbVideo.muted=true; thumbVideo.preload='metadata'; thumbVideo.crossOrigin='anonymous';
+  thumbVideo.style.display='none'; document.body.appendChild(thumbVideo);
+  thumbVideo.addEventListener('loadedmetadata',()=>{ thumbReady=true; if(thumbPendingTime!=null) seekThumb(thumbPendingTime); });
+  thumbVideo.addEventListener('seeked', drawThumb);
+  return thumbVideo;
+}
+function seekThumb(t){
+  if(!thumbReady){ thumbPendingTime=t; return; }
+  thumbPendingTime=null;
+  try{ thumbVideo.currentTime=Math.min(Math.max(0,t), (thumbVideo.duration||video.duration||0)-0.05); }catch{}
+}
+function drawThumb(){
+  const c=$('thumbCanvas'); if(!c) return;
+  const ctx=c.getContext('2d');
+  try{ ctx.drawImage(thumbVideo, 0, 0, c.width, c.height); }catch{ ctx.fillStyle='#111'; ctx.fillRect(0,0,c.width,c.height); }
+}
+const rangeWrap=$('rangeWrap'), thumbPreview=$('thumbPreview'), thumbTime=$('thumbTime');
+function syncThumbSrc(){
+  if(!video.src) return;
+  const tv=ensureThumbVideo();
+  if(tv.src !== video.src){ thumbReady=false; tv.src=video.src; tv.load(); }
+}
+video.addEventListener('loadedmetadata', syncThumbSrc);
+video.addEventListener('emptied', ()=>{ thumbReady=false; });
+if(video.src) syncThumbSrc();
+let thumbRAF=null;
+function showThumb(e){
+  if(!video.duration || isNaN(video.duration) || !video.src){ thumbPreview.classList.remove('show'); return; }
+  syncThumbSrc();
+  const rect=rangeWrap.getBoundingClientRect();
+  const x=(e.touches? e.touches[0].clientX : e.clientX) - rect.left;
+  const pct=Math.min(1, Math.max(0, x / rect.width));
+  const t=pct * video.duration;
+  thumbTime.textContent=fmt(t);
+  const leftPct=pct*100;
+  thumbPreview.style.left= leftPct + '%';
+  // clamp inside
+  thumbPreview.classList.add('show');
+  seekThumb(t);
+}
+function hideThumb(){ thumbPreview.classList.remove('show'); }
+rangeWrap.addEventListener('mousemove', showThumb);
+rangeWrap.addEventListener('mouseenter', showThumb);
+rangeWrap.addEventListener('mouseleave', hideThumb);
+rangeWrap.addEventListener('touchmove', showThumb, {passive:true});
+rangeWrap.addEventListener('touchend', hideThumb);
+
+// auto-hide controls
+let idleTimer=null;
+function kickIdle(){ playerWrap.classList.remove('idle'); clearTimeout(idleTimer); if(!video.paused) idleTimer=setTimeout(()=> playerWrap.classList.add('idle'), 2200); }
+playerWrap.addEventListener('mousemove', kickIdle);
+playerWrap.addEventListener('mouseleave', ()=> { if(!video.paused) playerWrap.classList.add('idle'); });
+
+loadBtn.onclick=()=>{
+  const u=videoUrlInput.value.trim(); if(!u) return;
+  loadVideo(u);
+  send({type:'video-change', videoUrl:u});
+  history.replaceState(null,'', location.pathname+`?video=${encodeURIComponent(u)}&proxy=${proxyChk.checked?'1':'0'}`);
+  showToast('ویدیو بارگذاری شد');
+};
+$('copyBtn').onclick=async()=>{
+  const link=roomLink.value + (videoUrlInput.value? `?video=${encodeURIComponent(videoUrlInput.value)}&proxy=${proxyChk.checked?'1':'0'}`:'');
+  await navigator.clipboard.writeText(link); showToast('لینک دعوت کپی شد ✓');
+};
+
+// VPN modal — bulk + list + ping + localStorage
+const LS_KEY=`wt_vpn_${roomId}_${myUserId}`;
+function lsGet(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); }catch{ return []; } }
+function lsSet(a){ localStorage.setItem(LS_KEY, JSON.stringify(a)); }
+function parseHost(u){
+  try{
+    if(u.startsWith('vmess://')){ const b=atob(u.slice(8)); const j=JSON.parse(b); return j.add||j.host||''; }
+    const t=u.replace(/^(vless|trojan|ss):\/\//,'http://'); return new URL(t).hostname||'';
+  }catch{ return u.slice(0,22); }
+}
+function parseType(u){
+  const t=u.trim();
+  if(t.startsWith('vless://')) return 'vless';
+  if(t.startsWith('vmess://')) return 'vmess';
+  if(t.startsWith('trojan://')) return 'trojan';
+  if(t.startsWith('ss://')) return 'ss';
+  if(/^https?:\/\//i.test(t)) return 'http';
+  if(/^socks5?:\/\//i.test(t)) return 'socks';
+  return 'unk';
+}
+let pingCache=new Map();
+async function vpnFetchList(){
+  // local is source of truth; also try server for activeId sync
+  let local=lsGet();
+  try{
+    const r=await fetch(`/api/vpn/list?room=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(myUserId)}`);
+    const ct=r.headers.get('content-type')||'';
+    if(ct.includes('application/json')){ const j=await r.json(); if(j.store && j.store.configs.length && !local.length){ local=j.store.configs.map(c=>({id:c.id,uri:c.uri||'',type:c.type,host:c.host||parseHost(c.uri||''),label:c.label||''})); lsSet(local); }
+    }
+  }catch{}
+  return local;
+}
+function renderVpnList(){
+  const list=lsGet();
+  vpnCount.textContent=list.length;
+  const activeId=localStorage.getItem(LS_KEY+'_active')||list[0]?.id||'';
+  vpnList.innerHTML='';
+  if(!list.length){ vpnList.innerHTML='<div class="hint" style="text-align:center;padding:12px">لیست خالی — چند کانفیگ پیست کن و ایمپورت بزن.</div>'; vpnBtn.classList.remove('has-config'); vpnBtn.textContent='◈ VPN'; return; }
+  vpnBtn.classList.add('has-config'); vpnBtn.textContent=`◈ VPN · ${list.length}`;
+  list.forEach(c=>{
+    const ping=pingCache.get(c.id);
+    const isActive=c.id===activeId;
+    const pingText= ping ? (ping.ok? `🟢 ${ping.ms}ms` : `🔴 ${ping.error||'fail'}`) : '—';
+    const el=document.createElement('div');
+    el.style.cssText=`display:flex;align-items:center;gap:8px;padding:10px 11px;background:${isActive?'rgba(124,92,255,.14)':'rgba(255,255,255,.04)'};border:1px solid ${isActive?'rgba(124,92,255,.35)':'var(--border)'};border-radius:12px;transition:.2s`;
+    el.innerHTML=`<span style="font-size:10px;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--border)">${c.type}</span>
+      <span style="flex:1;min-width:0;font-size:11px;direction:ltr;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.host||parseHost(c.uri)}<br><small style="color:var(--muted);direction:ltr">${(c.uri||'').slice(0,52)}${(c.uri||'').length>52?'…':''}</small></span>
+      <span style="font-size:10px;white-space:nowrap;direction:ltr">${pingText}</span>
+      <button data-act="use" data-id="${c.id}" class="btn" style="padding:5px 9px;font-size:11px;${isActive?'background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent':''}">${isActive?'✓ فعال':'فعال'}</button>
+      <button data-act="ping" data-id="${c.id}" class="btn" style="padding:5px 7px;font-size:11px">📡</button>
+      <button data-act="del" data-id="${c.id}" class="btn" style="padding:5px 7px;font-size:11px;color:#f87171">✕</button>`;
+    vpnList.appendChild(el);
+  });
+  // bind
+  vpnList.querySelectorAll('[data-act="use"]').forEach(b=> b.onclick=async()=>{
+    localStorage.setItem(LS_KEY+'_active', b.dataset.id);
+    // sync active to server
+    try{ await fetch('/api/vpn/select',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:myUserId,roomId, id:b.dataset.id})}); }catch{}
+    renderVpnList(); showToast('کانفیگ فعال شد');
+  });
+  vpnList.querySelectorAll('[data-act="ping"]').forEach(b=> b.onclick=async()=>{
+    const id=b.dataset.id; const cfg=lsGet().find(x=>x.id===id); if(!cfg) return;
+    b.textContent='…';
+    try{
+      const r=await fetch('/api/vpn/ping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uri: cfg.uri})});
+      const j=await r.json(); pingCache.set(id, j); renderVpnList();
+    }catch(e){ pingCache.set(id,{ok:false,error:String(e).slice(0,40)}); renderVpnList(); }
+  });
+  vpnList.querySelectorAll('[data-act="del"]').forEach(b=> b.onclick=()=>{
+    const id=b.dataset.id; const arr=lsGet().filter(x=>x.id!==id); lsSet(arr);
+    if(localStorage.getItem(LS_KEY+'_active')===id) localStorage.removeItem(LS_KEY+'_active');
+    try{ fetch('/api/vpn/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:myUserId,roomId,id})}); }catch{}
+    pingCache.delete(id); renderVpnList(); showToast('حذف شد');
+  });
+}
+function openVpn(){ vpnModal.classList.add('open'); vpnStatus.className='vpn-status'; vpnStatus.style.display='none'; renderVpnList(); }
+function closeVpn(){ vpnModal.classList.remove('open'); }
+vpnBtn.onclick=openVpn;
+$('vpnClose').onclick=closeVpn;
+$('vpnCancel').onclick=closeVpn;
+vpnModal.addEventListener('click',e=>{ if(e.target===vpnModal) closeVpn(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && vpnModal.classList.contains('open')) closeVpn(); });
+
+$('vpnImport').onclick=async()=>{
+  const raw=$('vpnUris').value.trim();
+  if(!raw){ vpnStatus.className='vpn-status err'; vpnStatus.style.display='block'; vpnStatus.textContent='چند کانفیگ را پیست کن (هر خط یکی).'; return; }
+  const lines=[...new Set(raw.split(/[\r\n,]+/).map(s=>s.trim()).filter(Boolean))];
+  if(!lines.length){ vpnStatus.className='vpn-status err'; vpnStatus.style.display='block'; vpnStatus.textContent='کانفیگی یافت نشد.'; return; }
+  const existing=new Set(lsGet().map(c=>c.uri));
+  let added=0;
+  const cur=lsGet();
+  for(const uri of lines){
+    if(existing.has(uri)) continue;
+    cur.push({id:Math.random().toString(36).slice(2,9), uri, type:parseType(uri), host:parseHost(uri), label:parseHost(uri)});
+    added++;
+  }
+  lsSet(cur);
+  // sync to server (do not fail UI if server 404)
+  try{
+    const r=await fetch('/api/vpn/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:myUserId, roomId, urisText: lines.join('\n')})});
+    const ct=r.headers.get('content-type')||'';
+    if(ct.includes('application/json')) await r.json(); // ignore body, just ensure not 404 html
+  }catch{}
+  $('vpnUris').value='';
+  vpnStatus.className='vpn-status ok'; vpnStatus.style.display='block';
+  vpnStatus.textContent=`${added} کانفیگ اضافه شد — مجموع ${cur.length}`;
+  renderVpnList(); showToast(`${added} ایمپورت شد`);
+};
+$('vpnPingAll').onclick=async()=>{
+  const list=lsGet(); if(!list.length){ showToast('لیست خالی'); return; }
+  const btn=$('vpnPingAll'); const orig=btn.textContent; btn.textContent='… در حال پینگ'; btn.disabled=true;
+  pingCache.clear(); renderVpnList();
+  // helper to render single row update like ping تکی
+  const markPinging=(id)=>{ pingCache.set(id, {ok:null, ms:null, error:'…'}); renderVpnList(); };
+  try{
+    // try server bulk, but render progressively per-item as results arrive
+    let bulkDone=false;
+    try{
+      const listForPing=lsGet();
+      const r=await fetch('/api/vpn/ping-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:myUserId, roomId, configs: listForPing.map(c=>({id:c.id, uri:c.uri}))})});
+      const ct=r.headers.get('content-type')||'';
+      if(ct.includes('application/json')){
+        const j=await r.json();
+        if(j.results && j.results.length){
+          for(const x of j.results){ pingCache.set(x.id, x); renderVpnList(); }
+          bulkDone=true;
+        }
+      }
+    }catch{}
+    if(!bulkDone){
+      // fallback: ping one-by-one exactly like ping تکی — each config writes immediately
+      for(const c of list){
+        markPinging(c.id);
+        try{
+          const rr=await fetch('/api/vpn/ping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uri:c.uri})});
+          const ct2=rr.headers.get('content-type')||'';
+          const jj= ct2.includes('application/json') ? await rr.json() : {ok:false, error:'bad response'};
+          pingCache.set(c.id, jj);
+        }catch(e){ pingCache.set(c.id,{ok:false,error:String(e).slice(0,32)}); }
+        renderVpnList();
+      }
+    } else {
+      // still ensure all ids have entry (failed parse fallback)
+      for(const c of list) if(!pingCache.has(c.id)) pingCache.set(c.id, {ok:false,error:'no result'});
+      renderVpnList();
+    }
+    showToast('پینگ تمام شد');
+  }catch(e){ vpnStatus.className='vpn-status err'; vpnStatus.style.display='block'; vpnStatus.textContent=String(e).slice(0,120); }
+  btn.textContent=orig; btn.disabled=false;
+};
+$('vpnAuto').onclick=async()=>{
+  await $('vpnPingAll').onclick();
+  let best=null; for(const [id, v] of pingCache){ if(v.ok && (best==null || v.ms < pingCache.get(best).ms)) best=id; }
+  if(best){ localStorage.setItem(LS_KEY+'_active', best); try{ await fetch('/api/vpn/select',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:myUserId,roomId,id:best})}); }catch{} renderVpnList(); showToast('بهترین انتخاب شد'); }
+  else showToast('کانفیگ سالمی یافت نشد');
+};
+$('vpnClearAll').onclick=()=>{
+  if(!confirm('همه کانفیگ‌های این اتاق حذف شوند؟')) return;
+  localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY+'_active'); pingCache.clear();
+  try{ fetch(`/api/vpn?room=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(myUserId)}`,{method:'DELETE'}); }catch{}
+  renderVpnList(); showToast('حذف شد');
+};
+renderVpnList();
+
+// WS
+function wsUrl(){
+  const proto=location.protocol==='https:'?'wss:':'ws:';
+  return `${proto}//${location.host}/ws?room=${encodeURIComponent(roomId)}`;
+}
+function connect(){
+  ws=new WebSocket(wsUrl());
+  ws.onopen=()=>{ connText.textContent='متصل'; syncDot.classList.add('on'); ws.send(JSON.stringify({type:'join', room:roomId, name:myName, videoUrl: initialVideo})); startHostSync(); kickIdle(); };
+  ws.onclose=()=>{ connText.textContent='قطع — اتصال مجدد…'; syncDot.classList.remove('on'); stopHostSync(); setTimeout(connect,1200); };
+  ws.onerror=()=>{ connText.textContent='خطا'; };
+  ws.onmessage=e=>{
+    let m; try{ m=JSON.parse(e.data);}catch{return;}
+    if(m.type==='joined'){ myId=m.id; hostId=m.hostId; isHost=myId===hostId; renderRole(); if(m.state && m.state.videoUrl && !initialVideo){ videoUrlInput.value=m.state.videoUrl; loadVideo(m.state.videoUrl);} if(m.state) applySync(m.state, true); peerPill.textContent=`${m.peers} نفر`; }
+    if(m.type==='peer-join'){ peerPill.textContent=`${m.peers} نفر`; showToast('یک نفر وارد شد'); }
+    if(m.type==='peer-leave'){ peerPill.textContent=`${m.peers} نفر`; }
+    if(m.type==='host-change'){ hostId=m.hostId; isHost=myId===hostId; renderRole(); }
+    if(m.type==='request-sync'){ send({type:'sync', time:video.currentTime, playing:!video.paused}); }
+    if(m.type==='play'){ suppress=true; video.currentTime=m.time??video.currentTime; video.play().finally(()=> setTimeout(()=>{suppress=false; syncPlayIcon();},350)); }
+    if(m.type==='pause'){ suppress=true; video.currentTime=m.time??video.currentTime; video.pause(); setTimeout(()=>{suppress=false; syncPlayIcon();},350); }
+    if(m.type==='seek'){ suppress=true; video.currentTime=m.time; setTimeout(()=>suppress=false,350); }
+    if(m.type==='sync'){
+      if(m.from===myId) return;
+      const drift=Math.abs(video.currentTime - m.time);
+      if(drift>0.8){ suppress=true; video.currentTime=m.time; setTimeout(()=>suppress=false,350); }
+      if(m.playing && video.paused){ suppress=true; video.play().finally(()=>setTimeout(()=>{suppress=false; syncPlayIcon();},350)); }
+      if(!m.playing && !video.paused){ suppress=true; video.pause(); setTimeout(()=>{suppress=false; syncPlayIcon();},350); }
+    }
+    if(m.type==='video-change'){ videoUrlInput.value=m.videoUrl; loadVideo(m.videoUrl); showToast('ویدیو تغییر کرد'); }
+  };
+}
+function renderRole(){ hostPill.textContent=isHost?'میزبان':'مهمان'; hostPill.className='pill '+(isHost?'live':''); $('syncStatus').textContent='کنترل آزاد — هر دو نفر می‌توانند پلی/پاز/Seek کنند. سینک هر ۱ ثانیه.'; }
+function send(o){ if(ws && ws.readyState===1) ws.send(JSON.stringify({...o, room:roomId})); }
+function startHostSync(){ stopHostSync(); syncTimer=setInterval(()=>{ if(ws && ws.readyState===1 && !isNaN(video.duration) && video.duration) send({type:'sync', time:video.currentTime, playing:!video.paused}); },1000); }
+function stopHostSync(){ if(syncTimer) clearInterval(syncTimer); syncTimer=null; }
+function applySync(state, force=false){
+  if(!state) return;
+  const drift=Math.abs(video.currentTime - state.time);
+  if(force || drift>0.8){ suppress=true; video.currentTime=state.time; setTimeout(()=>suppress=false,300); }
+  if(state.playing && video.paused){ suppress=true; video.play().finally(()=>setTimeout(()=>{suppress=false; syncPlayIcon();},300)); }
+  if(!state.playing && !video.paused){ suppress=true; video.pause(); setTimeout(()=>{suppress=false; syncPlayIcon();},300); }
+}
+connect();
+syncPlayIcon();
+</script>

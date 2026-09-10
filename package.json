@@ -1,0 +1,13 @@
+{
+  "name": "watch-together",
+  "version": "1.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node server/server.js"
+  },
+  "dependencies": {
+    "ws": "^8.17.1",
+    "undici": "^6.19.0"
+  }
+}
