@@ -52,9 +52,10 @@ export class Room {
   }
   async fetch(req){
     const url = new URL(req.url);
-    // Health check for room validation
+    // Health check for room validation — exists = این DO تا حالا join داشته
     if(url.pathname === '/health' || url.pathname === '/api/health'){
-      return new Response(JSON.stringify({ok:true, peers:this.clients.size, hasVideo:!!this.roomState.videoUrl}), {
+      const exists = !!(await this.state.storage.get('created'));
+      return new Response(JSON.stringify({ok:true, exists, peers:this.clients.size, hasVideo:!!this.roomState.videoUrl}), {
         headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}
       });
     }
@@ -65,6 +66,7 @@ export class Room {
       let m; try{ m=JSON.parse(e.data);}catch{return;}
       if(m.type==='join'){
         this.clients.set(id, server); server._id=id; server._name=m.name||'مهمان';
+        this.state.storage.put('created', true);
         if(!this.hostId) this.hostId=id;
         if(m.videoUrl) this.roomState.videoUrl=m.videoUrl;
         server.send(JSON.stringify({type:'joined', id, hostId:this.hostId, state:this.roomState, peers:this.clients.size}));
@@ -86,8 +88,10 @@ export class Room {
         this.broadcast({...m, from:id}, id);
         return;
       }
-      if(m.type==='video-change'){ this.roomState.videoUrl=m.videoUrl; this.roomState.time=0; this.roomState.playing=false; this.roomState.sub=null; this.broadcast({type:'video-change', videoUrl:m.videoUrl, from:id}, id); }
-      if(m.type==='sub-change'){ this.roomState.sub=m.sub||null; this.roomState.updatedAt=Date.now(); this.broadcast({type:'sub-change', sub:m.sub, from:id}, id); }
+      if(m.type==='video-change'){ this.roomState.videoUrl=m.videoUrl; this.roomState.time=0; this.roomState.playing=false; this.roomState.sub=null; this.roomState.dub=null; this.roomState.updatedAt=Date.now(); this.broadcast({type:'video-change', videoUrl:m.videoUrl, from:id}, id); return; }
+      if(m.type==='sub-change'){ this.roomState.sub=m.sub||null; this.roomState.updatedAt=Date.now(); this.broadcast({type:'sub-change', sub:m.sub, from:id}, id); return; }
+      if(m.type==='dub-change'){ this.roomState.dub=m.dub||null; this.roomState.updatedAt=Date.now(); this.broadcast({type:'dub-change', dub:m.dub, from:id}, id); return; }
+      if(m.type==='chat'){ this.broadcast({type:'chat', text:m.text, from:id, name:server._name}, id); return; }
       if(m.type==='ping'){ server.send(JSON.stringify({type:'pong', t:m.t})); }
     });
     server.addEventListener('close',()=>{
@@ -265,16 +269,18 @@ export default {
     }
 
     // Health (with optional room validation for Worker)
+    // DO وجود اتاق را از storage می‌خواند — فقط اتاق‌هایی که حداقل یک join داشته‌اند exists=true
     if(url.pathname==='/api/health'){
       const roomId = url.searchParams.get('room');
       if(roomId){
         try{
           const id = env.ROOM.idFromName(roomId);
           const stub = env.ROOM.get(id);
-          // Try to fetch room state via a simple request
           const resp = await stub.fetch(new Request('http://internal/health', {method:'GET'}));
           const data = await resp.json();
-          return json({ok:true, mode:'worker', roomExists:true, roomId});
+          // exists = اتاق حداقل یک‌بار join شده (createdAt در storage)
+          const exists = !!data.exists;
+          return json({ok:true, mode:'worker', roomExists: exists, roomId, peers: data.peers||0});
         }catch{
           return json({ok:true, mode:'worker', roomExists:false, roomId});
         }
