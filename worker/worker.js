@@ -25,6 +25,9 @@ function storeKey(userId, roomId){ return (userId||'').trim() || (roomId||'').tr
 const vpnStore = new Map(); // key -> {configs:[{id,uri,type,host,label,addedAt}], activeId}
 function getStore(key){ if(!vpnStore.has(key)) vpnStore.set(key,{configs:[],activeId:null}); return vpnStore.get(key); }
 
+// Room shared proxy (owner selects, all peers use) — similar to Node server
+const roomSharedProxy = new Map(); // roomId -> { ownerUserId, uri, type, host, updatedAt }
+
 async function pingUri(uri, timeoutMs=4000, env){
   const u=(uri||'').trim(); const type=uriType(u);
   const host=uriHost(u);
@@ -47,22 +50,49 @@ export class Room {
   constructor(state, env){
     this.state=state; this.env=env;
     this.clients=new Map(); // id -> WebSocket
-    this.roomState={ playing:false, time:0, updatedAt:Date.now(), videoUrl:'', sub:null, dub:null };
     this.hostId=null;
+    // Load persisted room state from DO storage
+    this.roomState = {
+      playing:false, time:0, updatedAt:Date.now(),
+      videoUrl:'', sub:null, dub:null,
+      proxyUri:'', sharedProxy:false
+    };
+    this._loadState();
+  }
+  async _loadState(){
+    try{
+      const stored = await this.state.storage.get('roomState');
+      if(stored){
+        this.roomState = { ...this.roomState, ...stored };
+      }
+    }catch{}
+  }
+  async _saveState(){
+    try{
+      await this.state.storage.put('roomState', this.roomState);
+    }catch{}
   }
   async fetch(req){
     const url = new URL(req.url);
     // Health check for room validation — exists = این DO تا حالا join داشته
     if(url.pathname === '/health' || url.pathname === '/api/health'){
       const exists = !!(await this.state.storage.get('created'));
-      return new Response(JSON.stringify({ok:true, exists, peers:this.clients.size, hasVideo:!!this.roomState.videoUrl}), {
+      return new Response(JSON.stringify({
+        ok:true, exists, peers:this.clients.size, 
+        hasVideo:!!this.roomState.videoUrl,
+        videoUrl:this.roomState.videoUrl,
+        dubUrl:this.roomState.dub,
+        sub:this.roomState.sub,
+        proxyUri:this.roomState.proxyUri,
+        sharedProxy:this.roomState.sharedProxy
+      }), {
         headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}
       });
     }
     const pair=new WebSocketPair(); const [client, server]=Object.values(pair);
     server.accept();
     const id=Math.random().toString(36).slice(2,8);
-    server.addEventListener('message', e=>{
+    server.addEventListener('message', async e=>{
       let m; try{ m=JSON.parse(e.data);}catch{return;}
       if(m.type==='join'){
         this.clients.set(id, server); server._id=id; server._name=m.name||'مهمان';
@@ -70,6 +100,9 @@ export class Room {
         if(!this.hostId) this.hostId=id;
         const hasVideo = !!this.roomState.videoUrl;
         if(m.videoUrl) this.roomState.videoUrl=m.videoUrl;
+        if(m.dubUrl) this.roomState.dub = m.dubUrl;  // support dub audio from URL
+        if(m.sub) this.roomState.sub = m.sub;  // support subtitle from URL
+        await this._saveState();
         server.send(JSON.stringify({type:'joined', id, hostId:this.hostId, state:this.roomState, peers:this.clients.size}));
         this.broadcast({type:'peer-join', id, name:server._name, peers:this.clients.size}, id);
         // If joiner brought a video and room didn't have one, broadcast video-change so all peers load it
@@ -90,12 +123,14 @@ export class Room {
         if(m.type==='seek'){ this.roomState.time=m.time; }
         if(m.type==='sync'){ this.roomState.time=m.time; this.roomState.playing=m.playing; }
         this.roomState.updatedAt=Date.now();
+        await this._saveState();
         this.broadcast({...m, from:id}, id);
         return;
       }
-      if(m.type==='video-change'){ this.roomState.videoUrl=m.videoUrl; this.roomState.time=0; this.roomState.playing=false; this.roomState.sub=null; this.roomState.dub=null; this.roomState.updatedAt=Date.now(); this.broadcast({type:'video-change', videoUrl:m.videoUrl, from:id}, id); return; }
-      if(m.type==='sub-change'){ this.roomState.sub=m.sub||null; this.roomState.updatedAt=Date.now(); this.broadcast({type:'sub-change', sub:m.sub, from:id}, id); return; }
-      if(m.type==='dub-change'){ this.roomState.dub=m.dub||null; this.roomState.updatedAt=Date.now(); this.broadcast({type:'dub-change', dub:m.dub, from:id}, id); return; }
+      if(m.type==='video-change'){ this.roomState.videoUrl=m.videoUrl; this.roomState.time=0; this.roomState.playing=false; this.roomState.sub=null; this.roomState.dub=null; this.roomState.updatedAt=Date.now(); await this._saveState(); this.broadcast({type:'video-change', videoUrl:m.videoUrl, from:id}, id); return; }
+      if(m.type==='sub-change'){ this.roomState.sub=m.sub||null; this.roomState.updatedAt=Date.now(); await this._saveState(); this.broadcast({type:'sub-change', sub:m.sub, from:id}, id); return; }
+      if(m.type==='dub-change'){ this.roomState.dub=m.dub||null; this.roomState.updatedAt=Date.now(); await this._saveState(); this.broadcast({type:'dub-change', dub:m.dub, from:id}, id); return; }
+      if(m.type==='proxy-change'){ this.roomState.proxyUri=m.proxyUri||''; this.roomState.sharedProxy=!!m.shared; this.roomState.updatedAt=Date.now(); await this._saveState(); this.broadcast({type:'proxy-change', proxyUri:m.proxyUri, shared:!!m.shared, from:id}, id); return; }
       if(m.type==='chat'){ this.broadcast({type:'chat', text:m.text, from:id, name:server._name}, id); return; }
       if(m.type==='ping'){ server.send(JSON.stringify({type:'pong', t:m.t})); }
     });
@@ -214,9 +249,14 @@ export default {
         const userId=(body?.userId||'').trim(); const roomId=(body?.roomId||body?.room||'').trim(); const id=(body?.id||'').trim();
         const key=storeKey(userId,roomId); const s=vpnStore.get(key);
         if(!s) return json({ok:false,error:'no store'},404);
-        if(!s.configs.some(c=>c.id===id)) return json({ok:false,error:'id not found'},400);
+        const cfg = s.configs.find(c=>c.id===id);
+        if(!cfg) return json({ok:false,error:'id not found'},400);
         s.activeId=id;
-        return json({ok:true, activeId:id});
+        // Set room shared proxy (owner only)
+        if(roomId && userId){
+          roomSharedProxy.set(roomId, { ownerUserId: userId, uri: cfg.uri, type: cfg.type, host: cfg.host, updatedAt: Date.now() });
+        }
+        return json({ok:true, activeId:id, sharedProxySet:!!roomId});
       }
 
       if(url.pathname==='/api/vpn/remove' && req.method==='POST'){
@@ -297,9 +337,26 @@ export default {
       return json({ok:true, mode:'worker'});
     }
 
-    // Room shared proxy info (Worker has no per-room proxy — always false, peers use direct fetch)
+    // Room shared proxy info — get from module-level roomSharedProxy map
     if(url.pathname==='/api/room/proxy'){
-      return json({ok:true, shared:false, note:'Worker has no per-room proxy; use Node server for VPN-shared proxy'});
+      const roomId = url.searchParams.get('room');
+      const userId = url.searchParams.get('userId') || '';
+      if(!roomId) return json({ok:false, error:'room required'}, 400);
+      const sh = roomSharedProxy.get(roomId);
+      if(!sh){
+        return json({ok:true, shared:false, proxyUri:'', roomId, note:'no shared proxy set'});
+      }
+      // Only owner gets the actual URI; peers get shared=true but no URI (they use it via /api/proxy)
+      const isOwner = sh.ownerUserId === userId && userId !== '';
+      return json({
+        ok:true,
+        shared: true,
+        proxyUri: isOwner ? sh.uri : '',
+        type: sh.type,
+        host: sh.host,
+        roomId,
+        isOwner
+      });
     }
 
     // YouTube resolver — Worker: Invidious fallback (no yt-dlp on Workers)
@@ -324,15 +381,16 @@ export default {
       return json({ok:false,error:'invidious fallback failed — try Node server with yt-dlp'},502);
     }
 
-    // Proxy — optionally via selected VPN (Worker: http/socks cannot use ProxyAgent, so direct fetch)
+    // Proxy — use room shared proxy if available (http/socks via fetch with proxy not supported on Workers, so direct fetch for now)
     if(url.pathname==='/api/proxy'){
       const target=url.searchParams.get('url');
+      const roomId=url.searchParams.get('room');
       if(!target) return new Response('missing url',{status:400, headers:{'Access-Control-Allow-Origin':'*'}});
       try{
         const headers={}; const r = req.headers.get('range'); if(r) headers['Range']=r;
         headers['User-Agent']='Mozilla/5.0';
-        // In Worker, ignore per-room VPN dispatcher (no socks support); just direct fetch.
-        // If you need http proxy, deploy a separate proxy worker or use Node server.
+        // Check for room shared proxy (http/socks not directly usable on Workers, but we pass info to client)
+        // Client will handle proxy selection; Worker direct fetch as fallback
         const res=await fetch(target,{headers, cf:{cacheTtl:0}});
         const h=new Headers(res.headers); h.set('Access-Control-Allow-Origin','*'); h.set('Cache-Control','no-cache');
         return new Response(res.body,{status:res.status, headers:h});
