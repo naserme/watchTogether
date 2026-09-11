@@ -51,6 +51,13 @@ export class Room {
     this.hostId=null;
   }
   async fetch(req){
+    const url = new URL(req.url);
+    // Health check for room validation
+    if(url.pathname === '/health' || url.pathname === '/api/health'){
+      return new Response(JSON.stringify({ok:true, peers:this.clients.size, hasVideo:!!this.roomState.videoUrl}), {
+        headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}
+      });
+    }
     const pair=new WebSocketPair(); const [client, server]=Object.values(pair);
     server.accept();
     const id=Math.random().toString(36).slice(2,8);
@@ -257,8 +264,23 @@ export default {
       return json({ok:false, error:'video tracks/subs require Node server with ffmpeg — not available on Cloudflare Worker. Use the Linux server (node server/server.js).'}, 501);
     }
 
-    // Health
-    if(url.pathname==='/api/health') return json({ok:true, mode:'worker'});
+    // Health (with optional room validation for Worker)
+    if(url.pathname==='/api/health'){
+      const roomId = url.searchParams.get('room');
+      if(roomId){
+        try{
+          const id = env.ROOM.idFromName(roomId);
+          const stub = env.ROOM.get(id);
+          // Try to fetch room state via a simple request
+          const resp = await stub.fetch(new Request('http://internal/health', {method:'GET'}));
+          const data = await resp.json();
+          return json({ok:true, mode:'worker', roomExists:true, roomId});
+        }catch{
+          return json({ok:true, mode:'worker', roomExists:false, roomId});
+        }
+      }
+      return json({ok:true, mode:'worker'});
+    }
 
     // Proxy — optionally via selected VPN (Worker: http/socks cannot use ProxyAgent, so direct fetch)
     if(url.pathname==='/api/proxy'){

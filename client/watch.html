@@ -318,6 +318,13 @@ const toast=$('toast'), vol=$('vol'), muteBtn=$('muteBtn');
 const vpnBtn=$('vpnBtn'), vpnModal=$('vpnModal'), vpnUrisEl=$('vpnUris'), vpnStatus=$('vpnStatus'), vpnList=$('vpnList'), vpnCount=$('vpnCount');
 const USER_ID_KEY='wt_user_id'; let myUserId=localStorage.getItem(USER_ID_KEY); if(!myUserId){ myUserId=Math.random().toString(36).slice(2,10); localStorage.setItem(USER_ID_KEY, myUserId); }
 
+// Room ID format: xxxx-xxxx-xxxx (3 groups of 4 alphanumeric)
+const ROOM_ID_REGEX = /^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/i;
+
+const videoStatus=$('videoStatus');
+let lastUrl='';
+function showToast(t){ toast.textContent=t; toast.classList.add('show'); clearTimeout(showToast._t); showToast._t=setTimeout(()=>toast.classList.remove('show'),1800); }
+
 // room + params
 const pathParts=location.pathname.split('/').filter(Boolean);
 let roomId = pathParts[1] || 'demo';
@@ -328,14 +335,18 @@ let initialProxy = qs.get('proxy')==='1';
 let myName = qs.get('name')||'مهمان';
 let myId=null, hostId=null, isHost=false, suppress=false, ws=null, syncTimer=null;
 
+// Validate format; existence check only for joiners (no ?video=), creator skips redirect
+if(pathParts[1] && !ROOM_ID_REGEX.test(roomId) && roomId!=='demo'){
+  showToast('فرمت شناسه اتاق نامعتبر — باید xxxx-xxxx-xxxx باشد');
+  setTimeout(()=> location.href='/', 2000);
+} else if(pathParts[1] && !qs.has('video')){
+  fetch('/api/health?room='+encodeURIComponent(roomId))
+    .then(r=>r.json()).then(j=>{ if(!j.roomExists){ showToast('اتاق یافت نشد یا منقضی شده — از صفحه اصلی بسازید'); setTimeout(()=> location.href='/', 2500); } }).catch(()=>{});
+}
+
 videoUrlInput.value=initialVideo;
 proxyChk.checked=initialProxy;
 roomLink.value = location.origin + `/watch/${roomId}`;
-
-const videoStatus=$('videoStatus');
-let lastUrl='';
-
-function showToast(t){ toast.textContent=t; toast.classList.add('show'); clearTimeout(showToast._t); showToast._t=setTimeout(()=>toast.classList.remove('show'),1800); }
 function proxied(url){ if(!url) return ''; const base = `/api/proxy?url=${encodeURIComponent(url)}&room=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(myUserId)}`; if(!proxyChk.checked) return url; return base; }
 function showStatus(html){ videoStatus.innerHTML=html; videoStatus.style.display='grid'; }
 function hideStatus(){ videoStatus.style.display='none'; }
@@ -1170,7 +1181,7 @@ function connect(){
   ws.onopen=()=>{ connText.textContent='متصل'; syncDot.classList.add('on'); ws.send(JSON.stringify({type:'join', room:roomId, name:myName, videoUrl: initialVideo})); startHostSync(); kickIdle(); };
   ws.onclose=()=>{ connText.textContent='قطع — اتصال مجدد…'; syncDot.classList.remove('on'); stopHostSync(); setTimeout(connect,1200); };
   ws.onerror=()=>{ connText.textContent='خطا'; };
-  ws.onmessage=e=>{
+  ws.onmessage=async e=>{
     let m; try{ m=JSON.parse(e.data);}catch{return;}
     if(m.type==='joined'){ myId=m.id; hostId=m.hostId; isHost=myId===hostId; renderRole(); if(m.state && m.state.videoUrl && !initialVideo){ videoUrlInput.value=m.state.videoUrl; await loadVideo(m.state.videoUrl);} if(m.state) applySync(m.state, true); if(m.state && m.state.sub){ setTimeout(()=> applyRemoteSub(m.state.sub), 900); } if(m.state && m.state.dub){ setTimeout(()=> applyDubState(m.state.dub, true), 1100); } setTimeout(refreshProxyBadge, 800); peerPill.textContent=`${m.peers} نفر`; }
     if(m.type==='peer-join'){ peerPill.textContent=`${m.peers} نفر`; showToast('یک نفر وارد شد'); }

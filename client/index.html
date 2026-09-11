@@ -150,6 +150,7 @@ a{color:inherit;text-decoration:none}
     <div id="joinBox" class="join-box" style="display:none">
       <div class="field"><label>لینک دعوت اتاق</label><input id="joinLink" placeholder="https://.../watch/xxxxxx" style="direction:ltr"></div>
       <button class="btn btn-primary" style="width:100%;margin-top:10px" id="goJoin">ورود</button>
+      <div id="joinHint" class="hint" style="margin-top:8px"></div>
     </div>
   </div>
 </div>
@@ -178,18 +179,98 @@ a{color:inherit;text-decoration:none}
 
 <script>
 const $=s=>document.getElementById(s);
+
+// Room ID format: xxxx-xxxx-xxxx (3 groups of 4 alphanumeric)
+const ROOM_ID_REGEX = /^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/i;
+function genRoomId(){ return Array.from({length:3},()=>Math.random().toString(36).slice(2,6)).join('-'); }
+function isValidRoomId(id){ return ROOM_ID_REGEX.test(id); }
+
+// Check if room exists (works for both Node server and Worker via same API)
+async function checkRoomExists(roomId){
+  try{
+    const r=await fetch('/api/health?room='+encodeURIComponent(roomId));
+    const j=await r.json();
+    return j.ok && (j.rooms||0) > 0;
+  }catch{ return false; }
+}
+
+// When page loads, if path is /watch/xxx validate it
+document.addEventListener('DOMContentLoaded', async ()=>{
+  const path = location.pathname;
+  if(path.startsWith('/watch/')){
+    const roomId = path.split('/')[2];
+    if(roomId && isValidRoomId(roomId)){
+      const exists = await checkRoomExists(roomId);
+      if(!exists){
+        showToast('اتاق یافت نشد یا منقضی شده — اتاق جدید بسازید');
+        setTimeout(()=> location.href='/', 2000);
+      }
+    } else if(roomId){
+      showToast('فرمت اتاق نامعتبر — باید xxxx-xxxx-xxxx باشد');
+      setTimeout(()=> location.href='/', 2000);
+    }
+  }
+});
+
+function showToast(t){
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(20,20,28,.95);border:1px solid rgba(255,255,255,.1);color:#fff;padding:10px 16px;border-radius:999px;font-size:12px;z-index:9999;animation:slideUp .3s ease';
+  el.textContent = t;
+  document.body.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='.3s'; setTimeout(()=>el.remove(),300); }, 3000);
+}
+
+// Create room
 $('createBtn').onclick=()=>{
   const url=$('videoUrl').value.trim();
   const name=$('name').value.trim()||'میزبان';
   const proxy=$('useProxy').checked?'1':'0';
-  const id=Math.random().toString(36).slice(2,8);
+  const id=genRoomId();
   const q=new URLSearchParams({video:url, name, proxy});
   location.href=`/watch/${id}?`+q.toString();
 };
+
+// Toggle join box
 $('joinBtn').onclick=()=>{ const b=$('joinBox'); b.style.display=b.style.display==='none'?'block':'none'; };
-$('goJoin').onclick=()=>{
+
+// Join room with validation
+$('goJoin').onclick=async()=>{
   const link=$('joinLink').value.trim();
   if(!link) return;
-  try{ const u=new URL(link); location.href=u.pathname+u.search; } catch{ location.href=link; }
+  const hint=$('joinHint'); if(hint) hint.textContent='';
+  let path='';
+  try{
+    const u=new URL(link);
+    const parts=u.pathname.split('/').filter(Boolean);
+    if(parts[0]==='watch' && parts[1] && isValidRoomId(parts[1])){
+      path=u.pathname+u.search;
+    } else if(parts[0]==='watch'){
+      showToast('فرمت اتاق نامعتبر — باید xxxx-xxxx-xxxx باشد');
+      return;
+    } else {
+      showToast('لینک نامعتبر — باید /watch/xxxx-xxxx-xxxx باشد');
+      return;
+    }
+  }catch{
+    if(isValidRoomId(link)){
+      path=`/watch/${link}`;
+    }else{
+      showToast('لینک یا شناسه اتاق نامعتبر — فرمت: xxxx-xxxx-xxxx');
+      return;
+    }
+  }
+  // validate existence before redirect
+  const roomId=path.split('/').filter(Boolean)[1];
+  if(hint) hint.textContent='⏳ در حال بررسی اتاق…';
+  try{
+    const r=await fetch('/api/health?room='+encodeURIComponent(roomId));
+    const j=await r.json();
+    if(!j.roomExists){
+      if(hint) hint.textContent='';
+      showToast('اتاق یافت نشد یا منقضی شده');
+      return;
+    }
+  }catch{}
+  location.href=path;
 };
 </script>

@@ -160,28 +160,23 @@ async function extractSubToVtt(url, subIndex, timeoutMs=300000){
     console.log('[sub] try', i+1, args.join(' ').slice(0,120));
     try{
       const { spawn } = await import('child_process');
-      const ffmpeg = spawn(ffmpegBin(), args);
-      const chunks = [];
-      for await (const chunk of ffmpeg.stdout) chunks.push(chunk);
-      const stdout = Buffer.concat(chunks);
-      // wait with timeout
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          ffmpeg.kill('SIGKILL');
-          reject(new Error('timeout'));
-        }, timeoutMs);
-        ffmpeg.on('close', (code) => {
+      const result = await new Promise((resolve, reject)=>{
+        const ffmpeg = spawn(ffmpegBin(), args);
+        const chunks=[]; let errBuf='';
+        const timer=setTimeout(()=>{ try{ffmpeg.kill('SIGKILL');}catch{}; reject(new Error('timeout '+timeoutMs+'ms')); }, timeoutMs);
+        ffmpeg.stdout.on('data',c=>chunks.push(c));
+        ffmpeg.stderr.on('data',c=>errBuf+=c.toString());
+        ffmpeg.on('error',e=>{ clearTimeout(timer); reject(e); });
+        ffmpeg.on('close',code=>{
           clearTimeout(timer);
-          if (code === 0) resolve();
-          else reject(new Error(`ffmpeg exited with code ${code}`));
-        });
-        ffmpeg.on('error', (err) => {
-          clearTimeout(timer);
-          reject(err);
+          if(code===0){
+            const buf=Buffer.concat(chunks);
+            if(!buf.length) return reject(new Error('empty output stderr:'+errBuf.slice(0,600)));
+            resolve({buf, errBuf});
+          } else reject(Object.assign(new Error('ffmpeg exited '+code+' stderr:'+errBuf.slice(0,600)),{stderr:errBuf}));
         });
       });
-      let vtt = stdout.toString('utf8');
-      vtt=vtt.trimStart();
+      let vtt = result.buf.toString('utf8').trimStart();
       if(!vtt) continue;
       if(!vtt.startsWith('WEBVTT')) vtt='WEBVTT\n\n'+vtt;
       vttCache.set(vkey,{at:Date.now(), vtt});
@@ -190,7 +185,7 @@ async function extractSubToVtt(url, subIndex, timeoutMs=300000){
     }catch(e){
       const msg=String(e.message||e);
       const stderr=String(e.stderr||'');
-      console.log('[sub] try', i+1, 'FAIL', 'msg:', msg.slice(0,300), 'stderr:', stderr.slice(0,500));
+      console.log('[sub] try', i+1, 'FAIL', 'msg:', msg.slice(0,400), 'stderr:', stderr.slice(0,600));
       if(/404|Not Found|Server returned 404/i.test(stderr+msg)) return {ok:false, error: msg.slice(0,600), stderr: stderr.slice(0,800)};
       if(i===tryArgs.length-1) return {ok:false, error: msg.slice(0,800), stderr: stderr.slice(0,800)};
     }
@@ -205,8 +200,17 @@ const server = http.createServer(async (req,res)=>{
   if(req.method==='OPTIONS'){ res.writeHead(204); return res.end(); }
   const url = new URL(req.url, `http://${req.headers.host}`);
 
-  // Health
-  if(url.pathname==='/api/health'){ res.writeHead(200,{'Content-Type':'application/json'}); return res.end(JSON.stringify({ok:true, rooms:rooms.size})); }
+  // Health (with optional room validation)
+  if(url.pathname==='/api/health'){
+    const roomId = url.searchParams.get('room');
+    if(roomId){
+      const room = rooms.get(roomId);
+      res.writeHead(200,{'Content-Type':'application/json'});
+      return res.end(JSON.stringify({ok:true, rooms:rooms.size, roomExists:!!room, roomId}));
+    }
+    res.writeHead(200,{'Content-Type':'application/json'});
+    return res.end(JSON.stringify({ok:true, rooms:rooms.size}));
+  }
 
   // ── VPN APIs ──
   if(url.pathname.startsWith('/api/vpn')){
