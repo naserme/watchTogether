@@ -1,4 +1,4 @@
-// Cloudflare Worker — WatchTogether (synced to Node server v1.3)
+// Cloudflare Worker — WatchTogether (synced to Node server v1.4 — xxxx-xxxx-xxxx rooms, global subs/dub, health?room)
 // Deploy: cd worker && wrangler deploy
 // Durable Object: Room per roomId — democratic control + VPN bulk + ping
 
@@ -286,6 +286,18 @@ export default {
         }
       }
       return json({ok:true, mode:'worker'});
+    }
+
+    // Room shared proxy info (Worker has no per-room proxy — always false, peers use direct fetch)
+    if(url.pathname==='/api/room/proxy'){
+      return json({ok:true, shared:false, note:'Worker has no per-room proxy; use Node server for VPN-shared proxy'});
+    }
+
+    // YouTube resolver — Worker has no yt-dlp
+    if(url.pathname==='/api/yt'){
+      const target=url.searchParams.get('url');
+      if(!target) return json({ok:false,error:'missing url'},400);
+      return json({ok:false,error:'yt-dlp not available on Worker — use Node server or paste direct mp4 URL'},501);
     }
 
     // Proxy — optionally via selected VPN (Worker: http/socks cannot use ProxyAgent, so direct fetch)
