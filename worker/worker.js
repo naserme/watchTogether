@@ -293,11 +293,26 @@ export default {
       return json({ok:true, shared:false, note:'Worker has no per-room proxy; use Node server for VPN-shared proxy'});
     }
 
-    // YouTube resolver — Worker has no yt-dlp
+    // YouTube resolver — Worker: Invidious fallback (no yt-dlp on Workers)
     if(url.pathname==='/api/yt'){
       const target=url.searchParams.get('url');
       if(!target) return json({ok:false,error:'missing url'},400);
-      return json({ok:false,error:'yt-dlp not available on Worker — use Node server or paste direct mp4 URL'},501);
+      const ytId=(u)=>{ try{ const uu=new URL(u); if(uu.hostname.includes('youtu.be')) return uu.pathname.split('/').filter(Boolean)[0]||''; const v=uu.searchParams.get('v'); if(v) return v; const m=u.match(/\/(embed|shorts|v)\/([^/?&#]+)/); if(m) return m[2]; }catch{} const m2=u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{6,})/); return m2?m2[1]:''; };
+      const vid=ytId(target); if(!vid) return json({ok:false,error:'cannot parse youtube id'},400);
+      const instances=['https://yewtu.be','https://invidious.snopyta.org','https://inv.nadeko.net','https://iv.melmac.space'];
+      for(const base of instances){
+        try{
+          const r=await fetch(`${base}/api/v1/videos/${vid}`, {headers:{'User-Agent':'Mozilla/5.0'}, cf:{cacheTtl:0}});
+          if(!r.ok) continue;
+          const j=await r.json();
+          const fmts=[...(j.formatStreams||[]), ...(j.adaptiveFormats||[])].filter(f=>f.url);
+          let best=(j.formatStreams||[]).filter(f=>f.container==='mp4'&&f.url).sort((a,b)=>(b.width||0)-(a.width||0))[0];
+          if(!best) best=fmts.filter(f=>f.container==='mp4').sort((a,b)=>(b.width||0)-(a.width||0))[0];
+          if(!best) best=fmts[0];
+          if(best?.url) return json({ok:true, url:best.url, via:'invidious:'+base, title:j.title||''});
+        }catch{}
+      }
+      return json({ok:false,error:'invidious fallback failed — try Node server with yt-dlp'},502);
     }
 
     // Proxy — optionally via selected VPN (Worker: http/socks cannot use ProxyAgent, so direct fetch)

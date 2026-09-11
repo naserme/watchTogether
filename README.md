@@ -88,10 +88,10 @@ Dockerfile / package.json
 
 ## توسعه آینده
 
+- [x] **یوتیوب:** لینک share/watch/youtu.be را بده → سرور با `yt-dlp` (+ فالبک Invidious/Piped) لینک مستقیم mp4 می‌گیرد و با پراکسی اتاق پخش می‌کند — روی ورکر fallback به Invidious
 - [ ] **لیست افراد داخل اتاق — presence:** آواتار/نام هر peer، آنلاین/آفلاین، چه کسی paused/seeking است (WS: `peer-join`/`peer-leave` + heartbeat)
 - [ ] چت متنی سبک (WS `chat` — UI فعلاً مخفی)
 - [ ] تماس صوتی/تصویری (WebRTC — اختیاری، خاموش پیش‌فرض برای سبک ماندن)
-- [ ] استخراج لینک مستقیم یوتیوب (yt-dlp / Invidious) روی سرور
 - [ ] پشتیبانی کامل MKV demux با ffmpeg.wasm برای وقتی مرورگر audioTracks را نمی‌دهد
 
 ## نکات

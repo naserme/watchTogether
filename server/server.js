@@ -110,14 +110,53 @@ async function pingUri(uri, timeoutMs=5000){
   }catch(e){ return {ok:false, error: String(e.message||e).slice(0,120)}; }
 }
 
-// ── YouTube direct URL extraction (optional yt-dlp) ──
+// ── YouTube direct URL extraction: yt-dlp → Invidious fallback ──
+function ytId(url){
+  try{
+    const u=new URL(url);
+    if(u.hostname.includes('youtu.be')) return u.pathname.split('/').filter(Boolean)[0]||'';
+    const v=u.searchParams.get('v'); if(v) return v;
+    const m=url.match(/\/(embed|shorts|v)\/([^/?&#]+)/); if(m) return m[2];
+  }catch{}
+  const m2=url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{6,})/); return m2?m2[1]:'';
+}
+async function tryInvidious(videoId, timeoutMs=8000){
+  const instances=['https://yewtu.be','https://invidious.snopyta.org','https://inv.nadeko.net','https://iv.melmac.space'];
+  for(const base of instances){
+    try{
+      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(), timeoutMs);
+      const r=await fetch(`${base}/api/v1/videos/${videoId}`, {signal:ctrl.signal, headers:{'User-Agent':'Mozilla/5.0'}});
+      clearTimeout(t);
+      if(!r.ok) continue;
+      const j=await r.json();
+      const fmts=[...(j.formatStreams||[]), ...(j.adaptiveFormats||[])].filter(f=>f.url);
+      // prefer mp4 with both audio+video
+      let best=(j.formatStreams||[]).filter(f=>f.container==='mp4'&&f.url).sort((a,b)=>(b.width||0)-(a.width||0))[0];
+      if(!best) best=fmts.filter(f=>f.container==='mp4').sort((a,b)=>(b.width||0)-(a.width||0))[0];
+      if(!best) best=fmts[0];
+      if(best?.url) return {ok:true, url:best.url, via:'invidious:'+base, title:j.title||''};
+    }catch{}
+  }
+  return null;
+}
 async function tryYtDlp(url, timeoutMs=15000){
+  const id=ytId(url);
+  // 1) try local yt-dlp if installed
   try{
     const {stdout}=await execFileAsync('yt-dlp', ['-g','--no-playlist','-f','best[ext=mp4]/best', url], {timeout: timeoutMs, maxBuffer: 2*1024*1024});
     const line=(stdout||'').trim().split(/\r?\n/).filter(Boolean)[0];
-    if(line && /^https?:\/\//.test(line)) return {ok:true, url: line};
-  }catch(e){ return {ok:false, error: String(e.message||e).slice(0,300)}; }
-  return {ok:false, error:'no url'};
+    if(line && /^https?:\/\//.test(line)) return {ok:true, url: line, via:'yt-dlp'};
+  }catch(e){
+    // ENOENT → no yt-dlp installed, fall through to Invidious
+    if(!String(e.message||'').includes('ENOENT') && !String(e.code||'').includes('ENOENT')){
+      // yt-dlp exists but failed (maybe blocked) — still try Invidious
+    }
+  }
+  if(id){
+    const inv=await tryInvidious(id, 7000);
+    if(inv) return inv;
+  }
+  return {ok:false, error:'no url (install yt-dlp: pip install yt-dlp, or try Invidious fallback failed)'};
 }
 
 // ── MKV soft-sub/audio extraction via ffprobe/ffmpeg ──
