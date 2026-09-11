@@ -68,9 +68,14 @@ export class Room {
         this.clients.set(id, server); server._id=id; server._name=m.name||'مهمان';
         this.state.storage.put('created', true);
         if(!this.hostId) this.hostId=id;
+        const hasVideo = !!this.roomState.videoUrl;
         if(m.videoUrl) this.roomState.videoUrl=m.videoUrl;
         server.send(JSON.stringify({type:'joined', id, hostId:this.hostId, state:this.roomState, peers:this.clients.size}));
         this.broadcast({type:'peer-join', id, name:server._name, peers:this.clients.size}, id);
+        // If joiner brought a video and room didn't have one, broadcast video-change so all peers load it
+        if(m.videoUrl && !hasVideo){
+          this.broadcast({type:'video-change', videoUrl:m.videoUrl, from:id}, id);
+        }
         // democratic: any peer can answer request-sync, so broadcast request to all
         if(this.clients.size>1){
           // no need to target host only; but keep compat: ask everyone except joiner
