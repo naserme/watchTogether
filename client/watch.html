@@ -335,13 +335,18 @@ let initialProxy = qs.get('proxy')==='1';
 let myName = qs.get('name')||'مهمان';
 let myId=null, hostId=null, isHost=false, suppress=false, ws=null, syncTimer=null;
 
-// Validate format; existence check only for joiners (no ?video=), creator skips redirect
+// Validate format only — existence is soft (room auto-creates on first WS join, so don't hard-redirect)
 if(pathParts[1] && !ROOM_ID_REGEX.test(roomId) && roomId!=='demo'){
   showToast('فرمت شناسه اتاق نامعتبر — باید xxxx-xxxx-xxxx باشد');
   setTimeout(()=> location.href='/', 2000);
 } else if(pathParts[1] && !qs.has('video')){
   fetch('/api/health?room='+encodeURIComponent(roomId))
-    .then(r=>r.json()).then(j=>{ if(!j.roomExists){ showToast('اتاق یافت نشد یا منقضی شده — از صفحه اصلی بسازید'); setTimeout(()=> location.href='/', 2500); } }).catch(()=>{});
+    .then(r=>r.json()).then(j=>{
+      if(j && j.roomExists===false){
+        // room not yet created — allowed, will be created on WS join; just hint
+        console.log('[room] not yet exists, will auto-create on join', roomId);
+      }
+    }).catch(()=>{});
 }
 
 videoUrlInput.value=initialVideo;

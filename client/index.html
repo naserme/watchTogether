@@ -182,7 +182,7 @@ const $=s=>document.getElementById(s);
 
 // Room ID format: xxxx-xxxx-xxxx (3 groups of 4 alphanumeric)
 const ROOM_ID_REGEX = /^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/i;
-function genRoomId(){ return Array.from({length:3},()=>Math.random().toString(36).slice(2,6)).join('-'); }
+function genRoomId(){ const c=()=>Math.random().toString(36).slice(2,6).padEnd(4,'0').slice(0,4); return `${c()}-${c()}-${c()}`; }
 function isValidRoomId(id){ return ROOM_ID_REGEX.test(id); }
 
 // Check if room exists (works for both Node server and Worker via same API)
@@ -259,18 +259,9 @@ $('goJoin').onclick=async()=>{
       return;
     }
   }
-  // validate existence before redirect
+  // soft validate format (room auto-creates on WS join, so don't block join)
   const roomId=path.split('/').filter(Boolean)[1];
-  if(hint) hint.textContent='⏳ در حال بررسی اتاق…';
-  try{
-    const r=await fetch('/api/health?room='+encodeURIComponent(roomId));
-    const j=await r.json();
-    if(!j.roomExists){
-      if(hint) hint.textContent='';
-      showToast('اتاق یافت نشد یا منقضی شده');
-      return;
-    }
-  }catch{}
+  if(hint) hint.textContent='';
   location.href=path;
 };
 </script>
