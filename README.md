@@ -54,6 +54,17 @@ PORT=3000 HOST=0.0.0.0 node server/server.js
 
 ### 3) ورکر کلودفلر (Durable Object + Assets)
 
+**بدون wrangler (فقط curl/API):**
+```powershell
+# ویندوز — متغیرها را کجا ست کنم؟
+$env:CF_API_TOKEN="YOUR_TOKEN_HERE"   # یا مستقیم در deploy.ps1 ویرایش کن
+$env:CF_ACCOUNT_ID="YOUR_CF_ACCOUNT_ID"
+.\deploy.ps1   # یا  bash deploy.sh  روی لینوکس
+# اگر workers.dev خطای 1042/404 داد: dash.cloudflare.com -> Workers & Pages -> watch-together -> Settings -> Domains & Routes -> Enable workers.dev -> Save
+# سپس: https://watch-together.<subdomain>.workers.dev/api/health
+```
+
+
 ```bash
 cd worker
 npm i -g wrangler
